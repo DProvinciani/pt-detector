@@ -58,7 +58,7 @@ int NoCmdlineStartup()
 	// Create the Exit Event
 	g_appData.hExitEvt = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-	#pragma region 1. Generate Output dunp files base path string 
+#pragma region 1. Generate Output dunp files base path string 
 	SYSTEMTIME curTime = { 0 };
 	GetModuleFileName(GetModuleHandle(NULL), lpOutBasePath, MAX_PATH);
 	GetLocalTime(&curTime);
@@ -67,9 +67,9 @@ int NoCmdlineStartup()
 	swprintf_s(lpOutBasePath, MAX_PATH, L"%s%.2i%.2i-%.2i%.2i%.4i_Dumps",
 		lpOutBasePath, curTime.wHour, curTime.wMinute, curTime.wMonth, curTime.wDay, curTime.wYear);
 	CreateDirectory(lpOutBasePath, NULL);
-	#pragma endregion
+#pragma endregion
 
-	#pragma region 2. Ask the user and check the CPU affinity
+#pragma region 2. Ask the user and check the CPU affinity
 	wprintf(L"Insert here the target process to trace: ");
 	wscanf_s(L"%s", procPath, MAX_PATH);
 
@@ -81,7 +81,7 @@ int NoCmdlineStartup()
 	}
 #pragma endregion
 	
-	#pragma region 3. Create the CPU buffer data structures and trace files
+#pragma region 3. Create the CPU buffer data structures and trace files
 	wprintf(L"Creating trace files (binary and readable)... ");
 	bRetVal = (BOOL)InitPerCpuData(cpuAffinity, lpOutBasePath);
 	if (bRetVal) 
@@ -109,9 +109,9 @@ int NoCmdlineStartup()
 		return -1;
 	}
 	pCpuDescArray = g_appData.pCpuDescArray;
-	#pragma endregion
+#pragma endregion
 
-	#pragma region 4. Spawn of the new process and PMI threads
+#pragma region 4. Spawn of the new process and PMI threads
 	wprintf(L"Creating target process... ");
 	bRetVal = SpawnSuspendedProcess(procPath, NULL, &pi);
 	if (bRetVal) cl_wprintf(GREEN, L"OK\r\n");
@@ -150,9 +150,9 @@ int NoCmdlineStartup()
 			ResumeThread(hNewThr);
 		}
 	}
-	#pragma endregion
+#pragma endregion
 
-	#pragma region 5. Set IP filtering (if any) and TRACE options
+#pragma region 5. Set IP filtering (if any) and TRACE options
 	HMODULE hRemoteMod = NULL;						// The remote module base address
 	MODULEINFO remoteModInfo = { 0 };				// The remote module information
 	if (g_appData.bTraceByIp) {
@@ -190,9 +190,9 @@ int NoCmdlineStartup()
 	ptStartStruct.dwOptsMask = PT_TRACE_BRANCH_PCKS_MASK | PT_ENABLE_RET_COMPRESSION_MASK | PT_ENABLE_TOPA_MASK;
 	ptStartStruct.kCpuAffinity = cpuAffinity;
 	ptStartStruct.dwTraceSize = g_appData.dwTraceBuffSize;
-	#pragma endregion
+#pragma endregion
 
-	#pragma region 6. Optional - Allocate each PT CPU buffer (we can even skip this process, the START_TRACE IOCTL can do it for us) 
+#pragma region 6. Optional - Allocate each PT CPU buffer (we can even skip this process, the START_TRACE IOCTL can do it for us) 
 	LPVOID * lpBuffArray = new LPVOID[dwCpusCount];
 	RtlZeroMemory(lpBuffArray, sizeof(LPVOID)* dwCpusCount);
 	if (bManuallyAllocBuff) {
@@ -215,9 +215,9 @@ int NoCmdlineStartup()
 			return 0;
 		}
 	}
-	#pragma endregion
+#pragma endregion
 
-	#pragma region 8. Start the tracing and wait the process to exit
+#pragma region 7. Start the tracing and wait the process to exit
 	// Start the device Tracing
 	wprintf(L"Starting the Tracing and resuming the process... ");
 	ptStartStruct.dwProcessId = pi.dwProcessId;
@@ -250,9 +250,6 @@ int NoCmdlineStartup()
 	}
 
 	// Set the event and wait for all PMI thread to exit
-#ifdef _DEBUG
-CloseTrace:
-#endif
 	SetEvent(g_appData.hExitEvt);
 	for (int i = 0; i < (int)dwCpusCount; i++) {
 		WaitForSingleObject(pCpuDescArray[i].hPmiThread, INFINITE);
@@ -260,9 +257,9 @@ CloseTrace:
 		pCpuDescArray[i].hPmiThread = NULL;
 		pCpuDescArray[i].dwPmiThrId = 0;
 	}
-	#pragma endregion
+#pragma endregion
 
-	#pragma region 9. Optional - Get the results of our tracing (like the number of written packets)
+#pragma region 8. Optional - Get the results of our tracing (like the number of written packets)
 	PT_TRACE_DETAILS ptDetails = { 0 };
 	QWORD qwTotalNumOfPtPcks = 0;					// The TOTAL number of acquired packets
 	wprintf(L"\r\n\r\n");
@@ -283,9 +280,9 @@ CloseTrace:
 	}
 	wprintf(L"\r\nGlobal number of PT packets acquired: %I64i.\r\n", qwTotalNumOfPtPcks);
 	wprintf(L"All the dumps have been saved in \"%s\".\r\n", lpOutBasePath);
-	#pragma endregion
+#pragma endregion
 
-	#pragma region 10. Free the resources and close each files
+#pragma region 9. Free the resources and close each files
 	// Stop the Tracing (and clear the buffer if not manually allocated)
 	bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDRV_CLEAR_TRACE, (LPVOID)&cpuAffinity, sizeof(cpuAffinity), NULL, 0, &dwBytesIo, NULL);
 
@@ -298,7 +295,7 @@ CloseTrace:
 
 
 	CloseHandle(hPtDev);
-	#pragma endregion
+#pragma endregion
     return 0;
 }
 

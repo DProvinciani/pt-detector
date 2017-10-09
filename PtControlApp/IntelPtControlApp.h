@@ -74,9 +74,6 @@ BOOL SpawnSuspendedProcess(LPTSTR lpAppName, LPTSTR lpCmdLine, PROCESS_INFORMATI
 // Parse the command line arguments
 bool ParseCommandLine();
 
-// Try some Kernel tracing activity :-)
-bool DoKernelTrace(HANDLE hPtDev, PT_USER_REQ ptUserReq, LPTSTR lpDrvName);
-
 // Initialize and open the per-CPU files and data structures
 bool InitPerCpuData(ULONG_PTR kCpuAffinity, LPTSTR lpBasePath);
 
@@ -84,7 +81,7 @@ bool InitPerCpuData(ULONG_PTR kCpuAffinity, LPTSTR lpBasePath);
 bool FreePerCpuData(BOOL bDeleteFiles = FALSE);
 
 // Write the human readable dump file header
-bool WriteCpuTextDumpsHeader(LPTSTR lpImgName, ULONG_PTR qwBase, DWORD dwSize, BOOLEAN bKernelTrace = FALSE);
+bool WriteCpuTextDumpsHeader(LPTSTR lpImgName, ULONG_PTR qwBase, DWORD dwSize);
 
 
 

@@ -26,7 +26,7 @@ int NoCmdlineStartup()
 	TCHAR procPath[MAX_PATH] = { 0 };				// The target process full path
 	PT_USER_REQ ptStartStruct = { 0 };				// The Intel PT starting structure
 	DWORD dwBytesIo = 0;							// Number of I/O bytes
-	DWORD dwCpusCount = 1;							// Number of CPUs in which to run the code
+	DWORD dwCpusCount = 1;							// Number of CPUs in which to run the code (supporting only one by moment)
 	DWORD dwLastErr = 0;							// Last Win32 Error
 	KAFFINITY cpuAffinity = 0;						// The processor Affinity mask
 	BOOLEAN bDoKernelTrace = FALSE;					// TRUE if I would like to do kernel tracing
@@ -70,33 +70,13 @@ int NoCmdlineStartup()
 	#pragma endregion
 
 	#pragma region 2. Ask the user and check the CPU affinity
-	TCHAR answer[10] = { 0 };
-	wprintf(L"Would you like to do the Kernel Tests? [Y/N] ");
-	wscanf_s(L"%2s", answer, 10);
-	if ((answer[0] | 0x20) == L'y') {
-		g_appData.dwMainThrId = GetCurrentThreadId();
-		bDoKernelTrace = TRUE;
-	}
-
-	wprintf(L"Insert here the target %s to trace: ", (bDoKernelTrace ? L"kernel driver" : L"process"));
+	wprintf(L"Insert here the target process to trace: ");
 	wscanf_s(L"%s", procPath, MAX_PATH);
-	if (sysInfo.dwNumberOfProcessors > 1) {
-		// Ask how many processor to use
-		wprintf(L"On how many processors would you like to run the process? [1/%i] ", sysInfo.dwNumberOfProcessors);
-		wscanf_s(L"%i", &dwCpusCount);
 
-		if (dwCpusCount > sysInfo.dwNumberOfProcessors) {
-			wprintf(L"Invalid value, assuming all the processors as valid.\r\n");
-			cpuAffinity = sysInfo.dwActiveProcessorMask;
-		} else
-			cpuAffinity = ((DWORD_PTR)(-1i64) >> ((sizeof(DWORD_PTR) * 8) - dwCpusCount));
-		if (FALSE) 
-			// If you would like to test the different affinities:
-			cpuAffinity = 0xd;
-		_ASSERT((sysInfo.dwActiveProcessorMask | cpuAffinity) == sysInfo.dwActiveProcessorMask);
+	if (sysInfo.dwNumberOfProcessors > 1) {
+		cpuAffinity = ((DWORD_PTR)(-1i64) >> ((sizeof(DWORD_PTR) * 8) - dwCpusCount));
 	}
-	else
-	{
+	else {
 		cpuAffinity = sysInfo.dwActiveProcessorMask;
 	}
 #pragma endregion
@@ -132,28 +112,20 @@ int NoCmdlineStartup()
 	#pragma endregion
 
 	#pragma region 4. Spawn of the new process and PMI threads
-	if (!bDoKernelTrace) {
-		wprintf(L"Creating target process... ");
-		bRetVal = SpawnSuspendedProcess(procPath, NULL, &pi);
-		if (bRetVal) cl_wprintf(GREEN, L"OK\r\n");
-		else {
-			wprintf(L"Error!\r\n");
-			FreePerCpuData(TRUE);
-			CloseHandle(hPtDev);
-			wprintf(L"Press any key to exit...");
-			getwchar();
-			return -1;
-		}
-		g_appData.hTargetProc = pi.hProcess;
-	} else {
-		// Set this process as the remote one
-		pi.hProcess = GetCurrentProcess();
-		pi.hThread = GetCurrentThread();
-		pi.dwProcessId = GetCurrentProcessId();
+	wprintf(L"Creating target process... ");
+	bRetVal = SpawnSuspendedProcess(procPath, NULL, &pi);
+	if (bRetVal) cl_wprintf(GREEN, L"OK\r\n");
+	else {
+		wprintf(L"Error!\r\n");
+		FreePerCpuData(TRUE);
+		CloseHandle(hPtDev);
+		wprintf(L"Press any key to exit...");
+		getwchar();
+		return -1;
 	}
+	g_appData.hTargetProc = pi.hProcess;
 
-	if (!bDoKernelTrace) bRetVal = SetProcessAffinityMask(pi.hProcess, cpuAffinity);
-	else bRetVal = (BOOL)SetThreadAffinityMask(pi.hThread, cpuAffinity);
+	bRetVal = SetProcessAffinityMask(pi.hProcess, cpuAffinity);
 	_ASSERT(bRetVal);
 	if (!bRetVal) {
 		cl_wprintf(YELLOW, L"Warning!\r\n");
@@ -185,66 +157,22 @@ int NoCmdlineStartup()
 	MODULEINFO remoteModInfo = { 0 };				// The remote module information
 	if (g_appData.bTraceByIp) {
 		// Now grab the remote image base address and size
-		if (!bDoKernelTrace) {
-			bRetVal = EnumProcessModules(pi.hProcess, &hRemoteMod, sizeof(HMODULE), &dwBytesIo);
-			bRetVal = GetModuleInformation(pi.hProcess, hRemoteMod, &remoteModInfo, sizeof(MODULEINFO));
-			dwLastErr = GetLastError();
-		}
-		else {
-			// Grab the target module base address
-			SYSTEM_ALL_MODULES * pSysAllModules = NULL;
-			NTSTATUS ntStatus = 0;
-			CHAR modNameAnsi[0x80] = { 0 };
-			sprintf_s(modNameAnsi, COUNTOF(modNameAnsi), "%S", procPath);
-			ntStatus = ZwQuerySystemInformation(11, pSysAllModules, 0, &dwBytesIo);
-			if (ntStatus == STATUS_INFO_LENGTH_MISMATCH) {
-				pSysAllModules = (SYSTEM_ALL_MODULES*)VirtualAlloc(NULL, dwBytesIo + 64, MEM_COMMIT, PAGE_READWRITE);
-				RtlZeroMemory(pSysAllModules, dwBytesIo);
+		bRetVal = EnumProcessModules(pi.hProcess, &hRemoteMod, sizeof(HMODULE), &dwBytesIo);
+		bRetVal = GetModuleInformation(pi.hProcess, hRemoteMod, &remoteModInfo, sizeof(MODULEINFO));
+		dwLastErr = GetLastError();
 
-				ntStatus = ZwQuerySystemInformation(11, pSysAllModules, dwBytesIo, &dwBytesIo);
-				if (ntStatus == 0) {
-					// Search for the SimplePt
-					for (unsigned i = 0; i < pSysAllModules->dwNumOfModules; i++) {
-						SYSTEM_MODULE_INFORMATION curMod = pSysAllModules->modules[i];
-						LPSTR lpTargetModName = curMod.ImageName + curMod.ModuleNameOffset;
-						if (_stricmp(modNameAnsi, lpTargetModName) == 0) {
-							// Target module found
-							wprintf(L"Found \"%S\" kernel driver in memory.\r\n", lpTargetModName);
-							remoteModInfo.lpBaseOfDll = curMod.Base;
-							remoteModInfo.SizeOfImage = curMod.Size;
-							break;
-						}
-					}
-				}
-			}
-			if (pSysAllModules) VirtualFree((LPVOID)pSysAllModules, 0, MEM_RELEASE);
-			ptStartStruct.bTraceKernel = TRUE;
-			ptStartStruct.bTraceUser = FALSE;
-		}
 		g_appData.bTraceOnlyKernel = bDoKernelTrace;
-
-		#ifdef _DEBUG
-		if (!remoteModInfo.lpBaseOfDll && _wcsicmp(procPath, L"AaLl86TestDriver.sys") == 0) {
-			wprintf(L"Would you like to perform the Tracing test from Kernel-mode? [Y/N] ");
-			wscanf_s(L"%2s", answer, 10);
-			// Do the special Kernel-mode test of AaLl86
-			if ((answer[0] | 0x20) == L'y') {
-				DoKernelTrace(hPtDev, PT_USER_REQ(), procPath);
-				goto CloseTrace;
-			}
-		}
-		#endif
 
 		if (!remoteModInfo.lpBaseOfDll) {
 			cl_wprintf(RED, L"Error! ");
-			wprintf(L"I was not able to find the target %s base address and size.\r\n", (bDoKernelTrace ? L"kernel module" : L"process' main module"));
+			wprintf(L"I was not able to find the target process main module base address and size.\r\n");
 			FreePerCpuData();
 			CloseHandle(hPtDev);
 			return -1;
 		}
 
 		cl_wprintf(PINK, L"\r\n       Using IP filtering mode!\r\n");
-		wprintf(L"%s base address: 0x%llX, size 0x%08X.\r\n\r\n", (bDoKernelTrace ? L"Target kernel driver" : L"New Process main module"),
+		wprintf(L"New Process main module base address: 0x%llX, size 0x%08X.\r\n\r\n",
 			(QWORD)remoteModInfo.lpBaseOfDll, remoteModInfo.SizeOfImage);
 
 		// Set the PT_USER_REQUEST structure
@@ -255,7 +183,7 @@ int NoCmdlineStartup()
 	}		// END Tracing by IP block
 
 	// Write some information in the output text file:
-	WriteCpuTextDumpsHeader(procPath, (ULONG_PTR)remoteModInfo.lpBaseOfDll, remoteModInfo.SizeOfImage, bDoKernelTrace);
+	WriteCpuTextDumpsHeader(procPath, (ULONG_PTR)remoteModInfo.lpBaseOfDll, remoteModInfo.SizeOfImage);
 	ptStartStruct.bTraceUser = !bDoKernelTrace;
 	ptStartStruct.bTraceKernel = bDoKernelTrace;
 	// For now do not set the frequencies....
@@ -291,39 +219,34 @@ int NoCmdlineStartup()
 
 	#pragma region 8. Start the tracing and wait the process to exit
 	// Start the device Tracing
-	if (!bDoKernelTrace) {
-		wprintf(L"Starting the Tracing and resuming the process... ");
-		ptStartStruct.dwProcessId = pi.dwProcessId;
-		ptStartStruct.kCpuAffinity = cpuAffinity;
-		bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDRV_START_TRACE, (LPVOID)&ptStartStruct, sizeof(PT_USER_REQ), lpBuffArray, sizeof(LPVOID) * dwCpusCount, &dwBytesIo, NULL);
-		dwLastErr = GetLastError();
+	wprintf(L"Starting the Tracing and resuming the process... ");
+	ptStartStruct.dwProcessId = pi.dwProcessId;
+	ptStartStruct.kCpuAffinity = cpuAffinity;
+	bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDRV_START_TRACE, (LPVOID)&ptStartStruct, sizeof(PT_USER_REQ), lpBuffArray, sizeof(LPVOID) * dwCpusCount, &dwBytesIo, NULL);
+	dwLastErr = GetLastError();
 
-		if (bRetVal) {
-			cl_wprintf(GREEN, L"OK\r\n");
-			g_appData.currentTrace = ptStartStruct;
+	if (bRetVal) {
+		cl_wprintf(GREEN, L"OK\r\n");
+		g_appData.currentTrace = ptStartStruct;
 
-			// Copy the returned Buffer array
-			for (int i = 0; i < (int)g_appData.dwNumOfActiveCpus; i++) {
-				g_appData.pCpuDescArray[i].lpPtBuff = (LPBYTE)lpBuffArray[i];
-				g_appData.pCpuDescArray[i].dwBuffSize = ptStartStruct.dwTraceSize;
-			}
-
-			// Resume the target process
-			wprintf(L"\r\n");
-			Sleep(100);
-			ResumeThread(pi.hThread);
-			wprintf(L"Waiting for the traced process to exit...\r\n");
-			WaitForSingleObject(pi.hProcess, INFINITE);
-			wprintf(L"\r\n");
+		// Copy the returned Buffer array
+		for (int i = 0; i < (int)g_appData.dwNumOfActiveCpus; i++) {
+			g_appData.pCpuDescArray[i].lpPtBuff = (LPBYTE)lpBuffArray[i];
+			g_appData.pCpuDescArray[i].dwBuffSize = ptStartStruct.dwTraceSize;
 		}
-		else  {
-			TerminateProcess(pi.hProcess, -1);
-			cl_wprintf(RED, L"Error!\r\n");
-			bDeleteFiles = TRUE;
-		}
+
+		// Resume the target process
+		wprintf(L"\r\n");
+		Sleep(100);
+		ResumeThread(pi.hThread);
+		wprintf(L"Waiting for the traced process to exit...\r\n");
+		WaitForSingleObject(pi.hProcess, INFINITE);
+		wprintf(L"\r\n");
 	}
 	else {
-		DoKernelTrace(hPtDev, ptStartStruct, procPath);
+		TerminateProcess(pi.hProcess, -1);
+		cl_wprintf(RED, L"Error!\r\n");
+		bDeleteFiles = TRUE;
 	}
 
 	// Set the event and wait for all PMI thread to exit
@@ -497,7 +420,7 @@ bool FreePerCpuData(BOOL bDeleteFiles) {
 }
 
 // Write the human readable dump file header
-bool WriteCpuTextDumpsHeader(LPTSTR lpImgName, ULONG_PTR qwBase, DWORD dwSize, BOOLEAN bKernelTrace) {
+bool WriteCpuTextDumpsHeader(LPTSTR lpImgName, ULONG_PTR qwBase, DWORD dwSize) {
 	DWORD dwCurCpuCount = 0;			// Current CPU counter (different from ID)
 	DWORD dwNumOfCpus = 0;				// Total number of CPUs
 	KAFFINITY kCpuAffinity = 0;			// Current CPU affinity mask
@@ -523,10 +446,7 @@ bool WriteCpuTextDumpsHeader(LPTSTR lpImgName, ULONG_PTR qwBase, DWORD dwSize, B
 		sprintf_s(fullLine, COUNTOF(fullLine), "Intel PT Trace file. Version 0.5.\r\nCPU ID : %i\r\n", i);
 		WriteFile(hTextFile, fullLine, (DWORD)strlen(fullLine), &dwBytesIo, NULL);
 		if (qwBase && dwSize) {
-			if (!bKernelTrace)
-				sprintf_s(fullLine, COUNTOF(fullLine), "Executable name: %S\r\n", lpImgName);
-			else
-				sprintf_s(fullLine, COUNTOF(fullLine), "Kernel driver name: %S\r\n", lpImgName);
+			sprintf_s(fullLine, COUNTOF(fullLine), "Executable name: %S\r\n", lpImgName);
 			WriteFile(hTextFile, fullLine, (DWORD)strlen(fullLine), &dwBytesIo, NULL);
 			sprintf_s(fullLine, COUNTOF(fullLine), "Base address: 0x%016llX - Size 0x%08X\r\n", (QWORD)qwBase, dwSize);
 			WriteFile(hTextFile, fullLine, (DWORD)strlen(fullLine), &dwBytesIo, NULL);
@@ -694,115 +614,4 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
 	if (!g_appData.currentTrace.bTraceKernel)
 		ZwResumeProcess(g_appData.hTargetProc);
 	if (g_appData.hMainThr) ResumeThread(g_appData.hMainThr);
-}
-
-// Try some Kernel tracing activity :-)
-bool DoKernelTrace(HANDLE hPtDev, PT_USER_REQ ptUserReq, LPTSTR lpDrvName) {
-	BOOL bRetVal = FALSE;
-	HANDLE hTestDev = NULL;
-	DWORD dwLastErr = 0, dwBytesIo = 0;
-	KERNEL_MODULE kernelMod = { 0 };
-	LPVOID lpPtBuff = NULL;
-	TCHAR answer[0x20] = { 0 };
-	LPVOID * lpBuffArray = NULL;
-	DWORD dwNumOfCpus = g_appData.dwNumOfActiveCpus;
-	
-	// Specific AaLl86 Driver data:
-	const LPTSTR DosDevName = L"\\\\.\\IntelPtTest";
-	LPTSTR lpKernelModName = L"ci.dll";
-	bool bAaLl86Test = (_wcsicmp(lpDrvName, L"AaLl86TestDriver.sys") == 0);
-
-	#ifdef _DEBUG
-	if (bAaLl86Test && ptUserReq.dwTraceSize == 0) {
-		// Here theoretically I have to open the target driver module and insert the special BAD_OPCODE 
-		// BUT I am too lazy.
-		wprintf(L"Testing Kernel-mode Tracing from a Kernel module... ");
-		// Send the special IOCTLs
-		dwBytesIo = (DWORD)((wcslen(lpDrvName) + 1) * sizeof(WCHAR));
-		bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDR_DO_KERNELDRV_TEST, (LPVOID)lpDrvName, dwBytesIo, NULL, 0, &dwBytesIo, NULL);
-		dwLastErr = GetLastError();
-		if (bRetVal) {
-			cl_wprintf(GREEN, L"OK\r\n");
-			wprintf(L"The dump file has been saved in the \"C:\" volume.\r\n");
-			return true;
-		}
-		else {
-			cl_wprintf(RED, L"Error!\r\n");
-			return false;
-		}
-	}
-	#endif
-
-	if (bAaLl86Test) {
-		// Open the target kernel device object
-		wprintf(L"Simple Kernel Driver Test - Opening the device... ");
-		hTestDev = CreateFile(DosDevName, FILE_ALL_ACCESS, 0, NULL, OPEN_EXISTING, 0, NULL);
-		dwLastErr = GetLastError();
-		if (hTestDev != INVALID_HANDLE_VALUE)
-			cl_wprintf(GREEN, L"OK\r\n");
-		else {
-			cl_wprintf(RED, L"Error!\r\n");
-			return false;
-		}
-	}
-
-	// Allocate the buffer array
-	lpBuffArray = new LPVOID[dwNumOfCpus];
-	RtlZeroMemory(lpBuffArray, dwNumOfCpus * sizeof(LPVOID));
-
-	// Start the device Tracing
-	wprintf(L"Starting the Kernel-mode Tracing... ");
-	bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDRV_START_TRACE, (LPVOID)&ptUserReq, sizeof(PT_USER_REQ), 
-		lpBuffArray, sizeof(LPVOID) * dwNumOfCpus, &dwBytesIo, NULL);
-	dwLastErr = GetLastError();
-
-	if (bRetVal) {
-		cl_wprintf(GREEN, L"OK\r\n");
-		g_appData.currentTrace = ptUserReq;
-
-		// Copy the returned Buffer array
-		for (int i = 0; i < (int)dwNumOfCpus; i++) {
-			g_appData.pCpuDescArray[i].lpPtBuff = (LPBYTE)lpBuffArray[i];
-			g_appData.pCpuDescArray[i].dwBuffSize = ptUserReq.dwTraceSize;
-		}
-	}
-	else {
-		cl_wprintf(RED, L"Error!\r\n");
-		return false;
-	}
-	Sleep(100);
-
-	if (bAaLl86Test) {
-		wprintf(L"Doing some test malicious activity (this could crash your system)... ");
-		// Test the Search Module IOCTL
-		bRetVal = DeviceIoControl(hTestDev, IOCTL_PTBUG_SEARCHKERNELMODULE, (LPVOID)lpKernelModName, (DWORD)(wcslen(lpKernelModName) + 1) * sizeof(WCHAR), 
-			(LPVOID)&kernelMod,	sizeof(KERNEL_MODULE), &dwBytesIo, NULL);
-		dwLastErr = GetLastError();
-
-		if (bRetVal) {
-			// READ some memory from the CI.DLL module
-			LPBYTE lpBuff = new BYTE[0x1000];
-			bRetVal = ReadFile(hTestDev, (LPVOID)lpBuff, 0x1000, &dwBytesIo, NULL);
-
-			if (bRetVal && lpBuff[0] == 'M' && lpBuff[1] == 'Z') {
-				DWORD dwValue = 0x4000C;
-				DWORD dwOffset = 0x00194b4;				// CI!g_CiDeveloperMode symbol
-
-				bRetVal = SetFilePointer(hTestDev, dwOffset, NULL, FILE_BEGIN);
-				bRetVal = WriteFile(hTestDev, (LPCVOID)&dwValue, sizeof(DWORD), &dwBytesIo, NULL);
-			}
-		}
-		if (bRetVal)
-			cl_wprintf(GREEN, L"OK\r\n");
-		else
-			cl_wprintf(RED, L"Error!\r\n");
-	}
-	else {
-		wprintf(L"\r\n\r\nPress any key when you would like to stop the tracing...\r\n");
-		rewind(stdin);
-		getwchar();
-	}
-
-	CloseHandle(hTestDev);	
-	return (bRetVal != FALSE);
 }

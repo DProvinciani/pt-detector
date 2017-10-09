@@ -17,8 +17,6 @@ GLOBAL_DATA g_appData;
 
 int wmain(int argc, LPTSTR argv[])
 {
-	Sleep(30000);
-	
 	int iRetVal = 0;
 	wprintf(L"Talos Intel PT Test Application\r\n");
 	wprintf(L"Version 0.5\r\n\r\n");

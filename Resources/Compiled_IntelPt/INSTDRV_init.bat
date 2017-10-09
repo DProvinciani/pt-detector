@@ -1,0 +1,1 @@
+C:\Development\WindowsIntelPT\Compiled_IntelPt\INSTDRV.EXE C:\Development\WindowsIntelPT\x64\Release\WindowsPtDriver.sys

@@ -46,7 +46,7 @@ union MSR_IA32_PERF_GLOBAL_STATUS_DESC {
 		DWORD FIXED_CTR1 : 1;					// [33] - FIXED_CTR1 Overflow (RO)
 		DWORD FIXED_CTR2 : 1;					// [34] - FIXED_CTR2 Overflow (RO)
 		DWORD Reserved2 : 20;					// [35:54] - Reserved
-		DWORD TraceToPAPMI : 1;				// [55] - The ToPA PMI Interrupt status
+		DWORD TraceToPAPMI : 1;				    // [55] - The ToPA PMI Interrupt status
 		DWORD Reserved3 : 5;					// [56:60] - Reserved
 		DWORD Ovf_UncorePMU : 1;				// [61]
 		DWORD Ovf_Buffer : 1;					// [62]

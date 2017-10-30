@@ -21,6 +21,7 @@ int wmain(int argc, LPTSTR argv[])
 	wprintf(L"Talos Intel PT Test Application\r\n");
 	wprintf(L"Version 0.5\r\n\r\n");
 
+	// If no argument was received, then we start a new trace on NoCmdlineStartup method
 	if (!ParseCommandLine(argc, argv)) {
 		iRetVal = NoCmdlineStartup();
 	}

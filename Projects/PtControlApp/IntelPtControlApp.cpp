@@ -41,10 +41,19 @@ int NoCmdlineStartup()
 	lpOutBasePath = new TCHAR[MAX_PATH]; 
 	RtlZeroMemory(lpOutBasePath, MAX_PATH * sizeof(TCHAR));
 
+	// Getting system information and asking for Intel PT support
 	GetNativeSystemInfo(&sysInfo);
 	bRetVal = CheckIntelPtSupport(&ptCap);
 	wprintf(L"Intel Processor Tracing support for this CPU: ");
-	if (bRetVal) cl_wprintf(GREEN, L"YES\r\n"); else cl_wprintf(RED, L"NO\r\n");
+	if (bRetVal) 
+		cl_wprintf(GREEN, L"YES\r\n"); 
+	else
+	{
+		cl_wprintf(RED, L"NO\r\n");
+		return 0;
+	}
+
+	// Opening Intel PT device object
 	hPtDev = CreateFile(g_ptDevName, FILE_ALL_ACCESS, 0, NULL, OPEN_EXISTING, 0, NULL);
 	dwLastErr = GetLastError();
 
@@ -58,7 +67,7 @@ int NoCmdlineStartup()
 	// Create the Exit Event
 	g_appData.hExitEvt = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-#pragma region 1. Generate Output dunp files base path string 
+#pragma region 1. Generate output dump files directory 
 	SYSTEMTIME curTime = { 0 };
 	GetModuleFileName(GetModuleHandle(NULL), lpOutBasePath, MAX_PATH);
 	GetLocalTime(&curTime);
@@ -73,6 +82,11 @@ int NoCmdlineStartup()
 	wprintf(L"Insert here the target process to trace: ");
 	wscanf_s(L"%s", procPath, MAX_PATH);
 
+	/*
+	Setting the cpuAffinity
+	A process affinity mask is a bit vector in which each bit represents a logical
+	processor on which the threads of the process are allowed to run.
+	*/
 	if (sysInfo.dwNumberOfProcessors > 1) {
 		cpuAffinity = ((DWORD_PTR)(-1i64) >> ((sizeof(DWORD_PTR) * 8) - dwCpusCount));
 	}
@@ -84,11 +98,13 @@ int NoCmdlineStartup()
 #pragma region 3. Create the CPU buffer data structures and trace files
 	wprintf(L"Creating trace files (binary and readable)... ");
 	bRetVal = (BOOL)InitPerCpuData(cpuAffinity, lpOutBasePath);
+
 	if (bRetVal) 
-		cl_wprintf(GREEN, L"Success!\r\n");
+		cl_wprintf(GREEN, L"OK\r\n");
 	else {
+		// If because of any reason the per CPU data files creation fails
+		// we try again using the temp directory
 		RemoveDirectory(lpOutBasePath);
-		// We are great, we would like to try to write to the TEMP directory
 		dwBytesIo = GetTempPath(MAX_PATH, lpOutBasePath);
 		LPTSTR slashPtr = wcsrchr(lpOutBasePath, L'\\');
 		if (lpOutBasePath[dwBytesIo - 1] == '\\')  lpOutBasePath[--dwBytesIo] = 0;
@@ -101,6 +117,8 @@ int NoCmdlineStartup()
 			wprintf(L"(in TEMP directory)\r\n");
 		}
 	}
+
+	// Last check... if the creation failed also in the temp directory, we print the error message
 	if (!bRetVal) {
 		RemoveDirectory(lpOutBasePath);
 		cl_wprintf(RED, L"Error!\r\n");
@@ -171,8 +189,8 @@ int NoCmdlineStartup()
 			return -1;
 		}
 
-		cl_wprintf(PINK, L"\r\n       Using IP filtering mode!\r\n");
-		wprintf(L"New Process main module base address: 0x%llX, size 0x%08X.\r\n\r\n",
+		cl_wprintf(PINK, L"\r\n        Using IP filtering mode!\r\n");
+		wprintf(L"        New Process main module base address: 0x%llX, size 0x%08X.\r\n\r\n",
 			(QWORD)remoteModInfo.lpBaseOfDll, remoteModInfo.SizeOfImage);
 
 		// Set the PT_USER_REQUEST structure
@@ -192,32 +210,10 @@ int NoCmdlineStartup()
 	ptStartStruct.dwTraceSize = g_appData.dwTraceBuffSize;
 #pragma endregion
 
-#pragma region 6. Optional - Allocate each PT CPU buffer (we can even skip this process, the START_TRACE IOCTL can do it for us) 
+#pragma region 6. Allocate each PT CPU buffer and Start the tracing and wait the process to exit
 	LPVOID * lpBuffArray = new LPVOID[dwCpusCount];
 	RtlZeroMemory(lpBuffArray, sizeof(LPVOID)* dwCpusCount);
-	if (bManuallyAllocBuff) {
-		// 2 Things to keep in mind here:
-		//    1. The IOCTL_PTDRV_ALLOC_BUFFERS checks PT_ENABLE_TOPA bit for the buffer allocations
-		//    2. We do not need to send the entire PT_USER_REQ structure but only CPU mask, Size and a BOOL value (that contains the bit for the TOPA)
-		DeviceIoControl(hPtDev, IOCTL_PTDRV_FREE_BUFFERS, (LPVOID)&ptStartStruct, FIELD_OFFSET(PT_USER_REQ, dwProcessId), NULL, 0, &dwBytesIo, NULL);
-		bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDRV_ALLOC_BUFFERS, (LPVOID)&ptStartStruct, FIELD_OFFSET(PT_USER_REQ, dwProcessId), lpBuffArray, sizeof(LPVOID) * dwCpusCount, &dwBytesIo, NULL);
-		dwLastErr = GetLastError();
-		if (bRetVal) {
-			// Save our buffers
-			for (int i = 0; i < (int)dwCpusCount; i++)
-				g_appData.pCpuDescArray[i].lpPtBuff = (LPBYTE)lpBuffArray[i];
-		}
-		else {
-			cl_wprintf(RED, L"Error! ");
-			wprintf(L"Unable to allocate the PT buffers!\r\n");
-			FreePerCpuData();
-			CloseHandle(hPtDev);
-			return 0;
-		}
-	}
-#pragma endregion
-
-#pragma region 7. Start the tracing and wait the process to exit
+	
 	// Start the device Tracing
 	wprintf(L"Starting the Tracing and resuming the process... ");
 	ptStartStruct.dwProcessId = pi.dwProcessId;
@@ -239,7 +235,7 @@ int NoCmdlineStartup()
 		wprintf(L"\r\n");
 		Sleep(100);
 		ResumeThread(pi.hThread);
-		wprintf(L"Waiting for the traced process to exit...\r\n");
+		wprintf(L"Waiting for the traced process to exit...\r\n\r\n");
 		WaitForSingleObject(pi.hProcess, INFINITE);
 		wprintf(L"\r\n");
 	}
@@ -259,30 +255,26 @@ int NoCmdlineStartup()
 	}
 #pragma endregion
 
-#pragma region 8. Optional - Get the results of our tracing (like the number of written packets)
+#pragma region 7. Get the results of our tracing (like the number of written packets)
 	PT_TRACE_DETAILS ptDetails = { 0 };
-	QWORD qwTotalNumOfPtPcks = 0;					// The TOTAL number of acquired packets
-	wprintf(L"\r\n\r\n");
-	cl_wprintf(DARKYELLOW, L"*** PT Trace results ***\r\n");
-	wprintf(L"Number of traced CPUs: %i   -   Affinity mask: 0x%08X.\r\n", dwCpusCount, (DWORD)cpuAffinity);
+	
+	cl_wprintf(DARKYELLOW, L"    *** PT Trace results ***\r\n");
+	
 	for (int i = 0; i < sizeof(cpuAffinity) * 8; i++) {
 		if (!(cpuAffinity & (1i64 << i))) continue;
 
-		wprintf(L"CPU %i\r\n", i);
 		RtlZeroMemory(&ptDetails, sizeof(ptDetails));
 		bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDR_GET_TRACE_DETAILS, (LPVOID)&i, sizeof(int), (LPVOID)&ptDetails, sizeof(ptDetails), &dwBytesIo, NULL);
-		if (bRetVal) {
-			wprintf(L"   Number of traced IP ranges: %i\r\n", ptDetails.IpFiltering.dwNumOfRanges);
-			wprintf(L"   Number of acquired packets: %I64i\r\n", ptDetails.qwTotalNumberOfPackets);
-			qwTotalNumOfPtPcks += ptDetails.qwTotalNumberOfPackets;
-		} else
-			cl_wprintf(RED, L"   Error!\r\n");
+		if (bRetVal)
+			wprintf(L"        Number of acquired packets: %I64i\r\n", ptDetails.qwTotalNumberOfPackets);
+		else
+			cl_wprintf(RED, L"       Error getting trace details!\r\n");
 	}
-	wprintf(L"\r\nGlobal number of PT packets acquired: %I64i.\r\n", qwTotalNumOfPtPcks);
-	wprintf(L"All the dumps have been saved in \"%s\".\r\n", lpOutBasePath);
+
+	wprintf(L"        All the dumps have been saved in \"%s\".\r\n\r\n", lpOutBasePath);
 #pragma endregion
 
-#pragma region 9. Free the resources and close each files
+#pragma region 8. Free the resources and close each files
 	// Stop the Tracing (and clear the buffer if not manually allocated)
 	bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDRV_CLEAR_TRACE, (LPVOID)&cpuAffinity, sizeof(cpuAffinity), NULL, 0, &dwBytesIo, NULL);
 

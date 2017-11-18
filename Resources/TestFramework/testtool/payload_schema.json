@@ -1,0 +1,15 @@
+{
+	"type": "object",
+	"properties": {
+		"payload": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"patternProperties": {
+					"^[G|D]$": { "type": "string" }
+				}
+			}
+		}
+	},
+	"required": ["payload"]
+}

@@ -76,7 +76,7 @@ NTSTATUS AllocateCpuUserBuffers(KAFFINITY cpuAffinity, DWORD dwSize, LPVOID * lp
 	}
 
 	if (!dwNumOfBuffers) return STATUS_INVALID_PARAMETER;
-	DrvDbgPrint("[" DRV_NAME "] Requested the allocation of 0x%08X bytes buffer for %i CPUs (affinity 0x%08X)",
+	DrvDbgPrint("[" DRV_NAME "] Requested the allocation of 0x%08X bytes buffer for %i CPUs (affinity 0x%08X)\r\n",
 		dwSize, dwNumOfBuffers, cpuAffinity);
 
 	lpBuffArray = (ULONG_PTR*)ExAllocatePoolWithTag(PagedPool, dwNumOfBuffers * sizeof(ULONG_PTR), MEMTAG);

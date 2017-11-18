@@ -18,8 +18,8 @@ GLOBAL_DATA g_appData;
 int wmain(int argc, LPTSTR argv[])
 {
 	int iRetVal = 0;
-	wprintf(L"Talos Intel PT Test Application\r\n");
-	wprintf(L"Version 0.5\r\n\r\n");
+	wprintf(L"\r\n");
+	cl_wprintf(DARKYELLOW, L"    *** Code-Reuse Exploits Detector ***\r\n\r\n");
 
 	// If no argument was received, then we start a new trace on NoCmdlineStartup method
 	if (!ParseCommandLine(argc, argv)) {

@@ -222,7 +222,7 @@ int NoCmdlineStartup()
 	dwLastErr = GetLastError();
 
 	if (bRetVal) {
-		cl_wprintf(GREEN, L"OK\r\n");
+		cl_wprintf(GREEN, L"OK\r\n\r\n");
 		g_appData.currentTrace = ptStartStruct;
 
 		// Copy the returned Buffer array
@@ -232,12 +232,10 @@ int NoCmdlineStartup()
 		}
 
 		// Resume the target process
-		wprintf(L"\r\n");
 		Sleep(100);
 		ResumeThread(pi.hThread);
 		wprintf(L"Waiting for the traced process to exit...\r\n\r\n");
 		WaitForSingleObject(pi.hProcess, INFINITE);
-		wprintf(L"\r\n");
 	}
 	else {
 		TerminateProcess(pi.hProcess, -1);

@@ -6,8 +6,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WindowsPtDriver", "Projects
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PtControlApp", "Projects\PtControlApp\PtControlApp.vcxproj", "{AEEB84F9-A268-4642-8CCC-CE05D80ACD74}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestExploitTool", "Projects\TestExploitTool\TestExploitTool.vcxproj", "{BEBA64B8-D9EB-456C-8628-4694E27474EF}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -35,14 +33,6 @@ Global
 		{AEEB84F9-A268-4642-8CCC-CE05D80ACD74}.Release|x64.Build.0 = Release|x64
 		{AEEB84F9-A268-4642-8CCC-CE05D80ACD74}.Release|x86.ActiveCfg = Release|x64
 		{AEEB84F9-A268-4642-8CCC-CE05D80ACD74}.Release|x86.Build.0 = Release|x64
-		{BEBA64B8-D9EB-456C-8628-4694E27474EF}.Debug|x64.ActiveCfg = Debug|Win32
-		{BEBA64B8-D9EB-456C-8628-4694E27474EF}.Debug|x64.Build.0 = Debug|Win32
-		{BEBA64B8-D9EB-456C-8628-4694E27474EF}.Debug|x86.ActiveCfg = Debug|Win32
-		{BEBA64B8-D9EB-456C-8628-4694E27474EF}.Debug|x86.Build.0 = Debug|Win32
-		{BEBA64B8-D9EB-456C-8628-4694E27474EF}.Release|x64.ActiveCfg = Release|Win32
-		{BEBA64B8-D9EB-456C-8628-4694E27474EF}.Release|x64.Build.0 = Release|Win32
-		{BEBA64B8-D9EB-456C-8628-4694E27474EF}.Release|x86.ActiveCfg = Release|Win32
-		{BEBA64B8-D9EB-456C-8628-4694E27474EF}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

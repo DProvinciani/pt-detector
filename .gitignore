@@ -26,8 +26,8 @@ Projects/PtControlApp/Debug_**
 Projects/PtControlApp/Release_**
 Projects/WindowsPtDriver/Debug_**
 Projects/WindowsPtDriver/Release_**
-Projects/TestExploitTool/Debug_**
-Projects/TestExploitTool/Release_**
+Resources/TestExploitTool/Debug_**
+Resources/TestExploitTool/Release_**
 Resources/TestFramework/testframework/Debug_**
 Resources/TestFramework/testframework/Release_**
 Resources/TestFramework/testtool/Debug_**

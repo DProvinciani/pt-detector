@@ -140,7 +140,7 @@ bool TestToolHelpers::InjectIntoProcessViaCreateRemoteThread(const std::wstring 
 				FALSE, targetPID);
 			if (hProcess != NULL)
 			{
-				std::wcout << L"[+] Target PID 0x" << std::hex << targetPID << L" was succesfully opened" << std::endl;
+				std::wcout << L"[+] Target PID " << targetPID << L" was succesfully opened" << std::endl;
 
 				// Allocate space in the remote process for the pathname
 				LPVOID pszLibFileRemote = (PWSTR)VirtualAllocEx(hProcess, NULL, dllPathNameSize, MEM_COMMIT, PAGE_READWRITE);
@@ -176,6 +176,7 @@ bool TestToolHelpers::InjectIntoProcessViaCreateRemoteThread(const std::wstring 
 									{
 										std::wcout << L"[+] Success! DLL injected via InjectorCreateRemoteThread method" << std::endl;
 										Sleep(500); //Sleeping for some time to allow DLLMain and its logic to be launched
+
 										ret = true;
 									}
 									else

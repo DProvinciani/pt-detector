@@ -52,7 +52,7 @@ bool ExecutorROPChain::Execute(TestCommon::TestData &data)
 
 		if (TestToolHelpers::InjectIntoProcessViaCreateRemoteThread(data.fileToInject, data.pidToInject, gadgetDb, gadgetDbSize, gadgetDbRemoteAddr))
 		{
-			Sleep(90000); // BORRAR
+			//Sleep(90000); // BORRAR
 			
 			DWORD fakeSize = MAX_PAYLOAD_SIZE;
 			DWORD fakePayload[MAX_PAYLOAD_SIZE] = { 0 };
@@ -82,7 +82,8 @@ bool ExecutorROPChain::Execute(TestCommon::TestData &data)
 					char * address = (char *)gadgetDbRemoteAddr + currentGadgetOffset;
 					fakePayload[0] = (DWORD)address;
 
-					// Filling the payload buffer
+					std::wcerr << "[+] Filling the payload buffer" << std::endl;
+
 					for (rapidjson::SizeType i = 0; i < payloadArray.Size(); i++)
 					{
 						currentGadgetOffset = 0;
@@ -90,21 +91,24 @@ bool ExecutorROPChain::Execute(TestCommon::TestData &data)
 						
 						if (payloadArray[i].FindMember("G") != payloadArray[i].MemberEnd())
 						{
-							std::wcerr << "    Adding GADGET to payload --> " << payloadArray[i].FindMember("G")->value.GetString() << std::endl;
-							
 							std::string currentGadget = payloadArray[i].FindMember("G")->value.GetString();
 							unsigned int currentGadgetOffset = gadgetDbIndexed.find(currentGadget)->second;
 							char * address = (char *)gadgetDbRemoteAddr + currentGadgetOffset;
 							fakePayload[i+1] = (DWORD)address;
+
+							std::wcerr << "    GADGET:    " << payloadArray[i].FindMember("G")->value.GetString()
+								<< " --> 0x" << std::hex << (DWORD)address << std::endl;
 						}
 						else
 						{
-							std::wcerr << "    Adding DATA to payload --> " << payloadArray[i].FindMember("D")->value.GetString() << std::endl;
-							
 							char * data = (char *)std::stoi(payloadArray[i].FindMember("D")->value.GetString(), nullptr, 16);
 							fakePayload[i+1] = (DWORD)data;
+
+							std::wcerr << "    DATA:    " << payloadArray[i].FindMember("D")->value.GetString() << std::endl;
 						}
 					}
+
+					std::wcout << L"[+] Sending payload to execute." << std::endl;
 
 					//Open IPC, Parse JSON and SendCommand here
 					auto IPCClient = new TestToolHelpers::IPCClient(data.channelID);

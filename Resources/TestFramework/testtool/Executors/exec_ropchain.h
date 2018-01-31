@@ -19,7 +19,7 @@ public:
 	}
 
 private:
-	std::map <std::string, std::string> gadget_db;
+	std::map <std::string, std::string> gadgetDbStrings;
 
 };
 

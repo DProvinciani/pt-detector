@@ -181,6 +181,8 @@ bool TestToolHelpers::InjectIntoProcessViaCreateRemoteThread(const std::wstring 
 									else
 									{
 										std::wcout << L"[-] There was a problem creating a remote thread in target process" << std::endl;
+
+										wprintf(L"    CreateRemoteThread failed with 0x%x\n", GetLastError());
 									}
 								}
 								else

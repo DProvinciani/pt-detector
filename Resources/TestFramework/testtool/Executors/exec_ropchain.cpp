@@ -30,30 +30,28 @@ bool ExecutorROPChain::Execute(TestCommon::TestData &data)
 
 	if (TestToolHelpers::IsTestDataValid(data))
 	{
-		// Building the gadget_db array to send it to the injected process
+		// Building the gadgetDbEncoded array to send it to the injected process
 		LPVOID gadgetDbRemoteAddr = nullptr;
 		DWORD gadgetDbSize = MAX_PAYLOAD_SIZE;
-		char gadgetDb[MAX_PAYLOAD_SIZE] = { 0 };
+		char gadgetDbEncoded[MAX_PAYLOAD_SIZE] = { 0 };
 
 		// This map will contain the offset of each gadget from the start of the gadget_db array
 		std::map <std::string, unsigned int> gadgetDbIndexed;
 		unsigned int gadgetOffset = 0;
 
-		for (auto it = gadget_db.begin(); it != gadget_db.end(); it++)
+		for (auto it = gadgetDbStrings.begin(); it != gadgetDbStrings.end(); it++)
 		{
 			gadgetDbIndexed.insert(std::pair <std::string, unsigned int>(it->first, gadgetOffset));
 			
 			for (unsigned int i = 0; i < it->second.length(); i++)
 			{
-				gadgetDb[gadgetOffset] = *(it->second.c_str() + i);
+				gadgetDbEncoded[gadgetOffset] = *(it->second.c_str() + i);
 				gadgetOffset++;
 			}
 		}
 
-		if (TestToolHelpers::InjectIntoProcessViaCreateRemoteThread(data.fileToInject, data.pidToInject, gadgetDb, gadgetDbSize, gadgetDbRemoteAddr))
+		if (TestToolHelpers::InjectIntoProcessViaCreateRemoteThread(data.fileToInject, data.pidToInject, gadgetDbEncoded, gadgetDbSize, gadgetDbRemoteAddr))
 		{
-			Sleep(90000); // BORRAR
-			
 			DWORD fakeSize = MAX_PAYLOAD_SIZE;
 			DWORD fakePayload[MAX_PAYLOAD_SIZE] = { 0 };
 			DWORD bytesRead = 0;
@@ -106,7 +104,10 @@ bool ExecutorROPChain::Execute(TestCommon::TestData &data)
 						}
 					}
 
-					//Open IPC, Parse JSON and SendCommand here
+					std::wcerr << L"    Prass ENTER to send and execute the shellcode." << std::endl;
+					std::getchar();
+
+					//Opening IPC and sending shellcode here
 					auto IPCClient = new TestToolHelpers::IPCClient(data.channelID);
 					TestCommon::ARRAYBYTE ret = IPCClient->SendRequest(TestCommon::TestExecutorsMode::TEST_ROP_CHAIN, (unsigned char *)fakePayload, fakeSize);
 				}
@@ -121,16 +122,22 @@ bool ExecutorROPChain::Execute(TestCommon::TestData &data)
 					errorInfo.Clear();
 					validator.GetInvalidDocumentPointer().StringifyUriFragment(errorInfo);
 					std::wcerr << L"    Invalid document: " << errorInfo.GetString() << std::endl;
+
+					ret = false;
 				}
 			}
 			else
 			{
 				std::wcerr << L"[-] There was a problem readding the fake payload JSON file. Quitting now." << std::endl;
+
+				ret = false;
 			}
 		}
 		else
 		{
 			std::wcerr << L"[-] There was a problem injecting test framework into target process. Quitting now." << std::endl;
+
+			ret = false;
 		}
 	}
 
@@ -139,39 +146,39 @@ bool ExecutorROPChain::Execute(TestCommon::TestData &data)
 
 void ExecutorROPChain::initGadgetDB()
 {
-	gadget_db.insert(std::pair <std::string, std::string>("POP EAX ; POP EAX ; RET", "\x58\x58\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("POP EAX ; POP EAX ; RET", "\x58\x58\xc3"));
 	// PUSH REGISTER
-	gadget_db.insert(std::pair <std::string, std::string>("PUSH EAX ; RET", "\x50\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("PUSH EBX ; RET", "\x53\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("PUSH ECX ; RET", "\x51\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("PUSH EDX ; RET", "\x52\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("PUSH EBP ; RET", "\x55\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("PUSH ESP ; RET", "\x54\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("PUSH ESI ; RET", "\x56\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("PUSH EDI ; RET", "\x57\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("PUSH EAX ; RET", "\x50\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("PUSH EBX ; RET", "\x53\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("PUSH ECX ; RET", "\x51\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("PUSH EDX ; RET", "\x52\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("PUSH EBP ; RET", "\x55\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("PUSH ESP ; RET", "\x54\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("PUSH ESI ; RET", "\x56\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("PUSH EDI ; RET", "\x57\xc3"));
 	// POP REGISTER
-	gadget_db.insert(std::pair <std::string, std::string>("POP EAX ; RET", "\x58\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("POP EBX ; RET", "\x5b\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("POP ECX ; RET", "\x59\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("POP EDX ; RET", "\x5a\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("POP EBP ; RET", "\x5d\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("POP ESP ; RET", "\x5c\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("POP ESI ; RET", "\x5e\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("POP EDI ; RET", "\x5f\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("POP EAX ; RET", "\x58\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("POP EBX ; RET", "\x5b\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("POP ECX ; RET", "\x59\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("POP EDX ; RET", "\x5a\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("POP EBP ; RET", "\x5d\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("POP ESP ; RET", "\x5c\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("POP ESI ; RET", "\x5e\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("POP EDI ; RET", "\x5f\xc3"));
 	// MOV EAX, REGISTER
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EAX, EBX ; RET", "\x89\xd8\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EAX, ECX ; RET", "\x89\xc8\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EAX, EDX ; RET", "\x89\xd0\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EAX, EBP ; RET", "\x89\xe8\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EAX, ESP ; RET", "\x89\xe0\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EAX, ESI ; RET", "\x89\xf0\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EAX, EDI ; RET", "\x89\xf8\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EAX, EBX ; RET", "\x89\xd8\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EAX, ECX ; RET", "\x89\xc8\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EAX, EDX ; RET", "\x89\xd0\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EAX, EBP ; RET", "\x89\xe8\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EAX, ESP ; RET", "\x89\xe0\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EAX, ESI ; RET", "\x89\xf0\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EAX, EDI ; RET", "\x89\xf8\xc3"));
 	// MOV EBX, REGISTER
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EBX, EAX ; RET", "\x89\xc3\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EBX, ECX ; RET", "\x89\xcb\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EBX, EDX ; RET", "\x89\xd3\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EBX, EBP ; RET", "\x89\xeb\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EBX, ESP ; RET", "\x89\xe3\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EBX, ESI ; RET", "\x89\xf3\xc3"));
-	gadget_db.insert(std::pair <std::string, std::string>("MOV EBX, EDI ; RET", "\x89\xfb\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EBX, EAX ; RET", "\x89\xc3\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EBX, ECX ; RET", "\x89\xcb\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EBX, EDX ; RET", "\x89\xd3\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EBX, EBP ; RET", "\x89\xeb\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EBX, ESP ; RET", "\x89\xe3\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EBX, ESI ; RET", "\x89\xf3\xc3"));
+	gadgetDbStrings.insert(std::pair <std::string, std::string>("MOV EBX, EDI ; RET", "\x89\xfb\xc3"));
 }

@@ -59,11 +59,11 @@ int wmain(int argc, wchar_t *argv[])
 	if (TestToolHelpers::IsValidFile(defaultFileToInject) &&
 		TestToolHelpers::GetFullPathToFile(defaultFileToInject, fullPathToFileToInject))
 	{
-		std::wcout << "[+] TestFramework DLL is going to be used: " << defaultFileToInject << std::endl;
+		std::wcout << "[+] TestToolAgent DLL is going to be used: " << defaultFileToInject << std::endl;
 	}
 	else
 	{
-		std::wcerr << L"[-] TestFramework DLL file to inject cannot be found" << std::endl;
+		std::wcerr << L"[-] TestToolAgent DLL file to inject cannot be found" << std::endl;
 		ShowHelp();
 		return 1;
 	}

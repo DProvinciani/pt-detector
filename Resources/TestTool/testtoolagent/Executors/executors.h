@@ -3,7 +3,7 @@
 
 #include "../../common/common.h"
 
-namespace TestFrameworkExecutors
+namespace TestToolAgentExecutors
 {
 	int ExecROPChain(unsigned char* data);
 }

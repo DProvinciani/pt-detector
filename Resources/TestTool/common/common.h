@@ -45,8 +45,8 @@ namespace TestCommon
 
 	static const bool DEFAULT_VERBOSITY_STATUS = false;
 	static const TestExecutorsMode DEFAULT_EXECUTOR_MODE = TestExecutorsMode::TEST_NA;
-	static const std::wstring DEFAULT_DLL_TO_INJECT = L"testframework.dll";
-	static const std::wstring PRE_CHANNEL_TOKEN = L"TESTFRAMEWORKIPC_";
+	static const std::wstring DEFAULT_DLL_TO_INJECT = L"testtoolagent.dll";
+	static const std::wstring PRE_CHANNEL_TOKEN = L"TESTTOOLAGENTIPC_";
 
 	typedef std::vector<unsigned char> ARRAYBYTE;
 

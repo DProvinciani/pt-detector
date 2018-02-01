@@ -3,10 +3,10 @@
 
 #include "helpers.h"
 
-namespace TestFrameworkCore
+namespace TestToolAgentCore
 {
 	DWORD WINAPI ServerThread(LPVOID lp);
-	DWORD WINAPI RunTestFramework(LPVOID lpParameter);
+	DWORD WINAPI RunTestToolAgent(LPVOID lpParameter);
 }
 
 #endif

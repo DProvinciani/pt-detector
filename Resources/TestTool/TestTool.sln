@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "testframework", "testframework\testframework.vcxproj", "{C039526D-043A-40A1-8698-B3FAB5BD41B2}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "testtoolagent", "testtoolagent\testtoolagent.vcxproj", "{C039526D-043A-40A1-8698-B3FAB5BD41B2}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "testtool", "testtool\testtool.vcxproj", "{116A12A8-29EA-48D1-B91C-92F016D39403}"
 EndProject

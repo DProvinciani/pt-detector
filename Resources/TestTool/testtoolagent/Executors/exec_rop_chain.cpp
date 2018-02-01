@@ -2,7 +2,7 @@
 
 #define CHAIN_BUFFER_SIZE 128
 
-int TestFrameworkExecutors::ExecROPChain(unsigned char* ropChain)
+int TestToolAgentExecutors::ExecROPChain(unsigned char* ropChain)
 {
 	int ret = 0;
 

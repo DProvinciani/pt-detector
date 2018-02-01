@@ -28,10 +28,10 @@ Projects/WindowsPtDriver/Debug_**
 Projects/WindowsPtDriver/Release_**
 Resources/TestExploitTool/Debug_**
 Resources/TestExploitTool/Release_**
-Resources/TestFramework/testframework/Debug_**
-Resources/TestFramework/testframework/Release_**
-Resources/TestFramework/testtool/Debug_**
-Resources/TestFramework/testtool/Release_**
+Resources/TestTool/testtoolagent/Debug_**
+Resources/TestTool/testtoolagent/Release_**
+Resources/TestTool/testtool/Debug_**
+Resources/TestTool/testtool/Release_**
 
 # Visual Studio 2015 cache/options directory
 .vs/

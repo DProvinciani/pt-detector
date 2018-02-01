@@ -12,7 +12,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 	switch (ul_reason_for_call)
 	{
 		case DLL_PROCESS_ATTACH:
-			threadHandle = CreateThread(NULL, 0, TestFrameworkCore::RunTestFramework, NULL, 0, NULL);
+			threadHandle = CreateThread(NULL, 0, TestToolAgentCore::RunTestToolAgent, NULL, 0, NULL);
 			if (threadHandle != INVALID_HANDLE_VALUE)
 			{
 				TestCommon::Xtrace(L"Core framework was launched at PID: %d", currentPID);

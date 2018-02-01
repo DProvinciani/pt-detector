@@ -3,7 +3,7 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
-DWORD WINAPI TestFrameworkCore::RunTestFramework(LPVOID lpParameter)
+DWORD WINAPI TestToolAgentCore::RunTestToolAgent(LPVOID lpParameter)
 {
 	bool ret = false;
 	HANDLE coreThread = INVALID_HANDLE_VALUE;
@@ -15,10 +15,10 @@ DWORD WINAPI TestFrameworkCore::RunTestFramework(LPVOID lpParameter)
 	DWORD currentPID = GetCurrentProcessId();
 	std::wstring serverName(TestCommon::PRE_CHANNEL_TOKEN + std::to_wstring(currentPID));
 
-	dipc::server testFrameworkServer(serverName);
-	testFrameworkServer.route(TestCommon::TestExecutorsMode::TEST_ROP_CHAIN, TestFrameworkExecutors::ExecROPChain);
+	dipc::server testToolAgentServer(serverName);
+	testToolAgentServer.route(TestCommon::TestExecutorsMode::TEST_ROP_CHAIN, TestToolAgentExecutors::ExecROPChain);
 
-	testFrameworkServer.run();
+	testToolAgentServer.run();
 
 	return ret;
 }

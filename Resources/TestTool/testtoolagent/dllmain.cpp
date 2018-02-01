@@ -15,12 +15,12 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 			threadHandle = CreateThread(NULL, 0, TestToolAgentCore::RunTestToolAgent, NULL, 0, NULL);
 			if (threadHandle != INVALID_HANDLE_VALUE)
 			{
-				TestCommon::Xtrace(L"Core framework was launched at PID: %d", currentPID);
+				TestCommon::Xtrace(L"[TestToolAgent] Core framework was launched at PID: %d", currentPID);
 				ret = true;
 			}
 			else
 			{
-				TestCommon::Xtrace(L"There was a problem creating core framework at  PID: %d", currentPID);
+				TestCommon::Xtrace(L"[TestToolAgent] There was a problem creating core framework at  PID: %d", currentPID);
 			}
 			CloseHandle(threadHandle);
 			break;

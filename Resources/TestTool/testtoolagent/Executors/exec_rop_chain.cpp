@@ -6,7 +6,7 @@ int TestToolAgentExecutors::ExecROPChain(unsigned char* ropChain)
 {
 	int ret = 0;
 
-	TestCommon::Xtrace(L"Hello from ExecROPChain!");
+	TestCommon::Xtrace(L"[TestToolAgent] Hello from ExecROPChain!");
 
 	unsigned char ropChainOnStack[CHAIN_BUFFER_SIZE] = { 0 };
 

@@ -17,6 +17,17 @@
 const LPTSTR g_ptDevName = L"\\\\.\\WindowsIntelPtDev"; // Using \\.\ allows to work with the Device Namespace: https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx
 #pragma comment (lib, "ntdll.lib")
 
+static inline void Xtrace(LPCTSTR lpszFormat, ...)
+{
+	va_list args;
+	va_start(args, lpszFormat);
+	int nBuf;
+	TCHAR szBuffer[2048] = { 0 }; //fix this
+	nBuf = _vsnwprintf_s(szBuffer, 2047, lpszFormat, args);
+	::OutputDebugString(szBuffer);
+	va_end(args);
+}
+
 // Entry point without command line arguments
 int NoCmdlineStartup()
 {
@@ -239,7 +250,8 @@ int NoCmdlineStartup()
 	}
 	else {
 		TerminateProcess(pi.hProcess, -1);
-		cl_wprintf(RED, L"Error!\r\n");
+		cl_wprintf(RED, L"FAIL\r\n");
+		cl_wprintf(RED, L"        Start trace failed with error 0x%x\r\n\r\n", (LPVOID)dwLastErr);
 		bDeleteFiles = TRUE;
 	}
 
@@ -266,7 +278,7 @@ int NoCmdlineStartup()
 		if (bRetVal)
 			wprintf(L"        Number of acquired packets: %I64i\r\n", ptDetails.qwTotalNumberOfPackets);
 		else
-			cl_wprintf(RED, L"       Error getting trace details!\r\n");
+			cl_wprintf(RED, L"        Error getting trace details!\r\n");
 	}
 
 	wprintf(L"        All the dumps have been saved in \"%s\".\r\n\r\n", lpOutBasePath);
@@ -501,6 +513,8 @@ DWORD WINAPI PmiThreadProc(LPVOID lpParameter) {
 	PT_PMI_USER_CALLBACK pmiDesc = { 0 };
 	PT_CPU_BUFFER_DESC * pCurCpuBuff = &g_appData.pCpuDescArray[dwCpuNumber];
 
+	Xtrace(L"[PtControlApp] Executing PMI interrupt");
+
 	hKernelEvt = OpenEvent(SYNCHRONIZE, FALSE, lpEventName);
 	dwLastErr = GetLastError();
 
@@ -559,6 +573,8 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
 	BOOL bRetVal = FALSE;							// Returned Win32 value
 	DWORD dwLastErr = 0;							// Last Win32 error
 	KAFFINITY thisCpuAffinity = (1i64 << dwCpuId);
+
+	Xtrace(L"[PtControlApp] Executing PMI callback");
 
 	// Check if there is the main thread, open if so
 	if (g_appData.dwMainThrId && !g_appData.hMainThr)

@@ -1,1 +1,0 @@
-C:\Development\Tesis\Resources\Compiled_IntelPt\INSTDRV.EXE C:\Development\Tesis\Output\Release_x64\WindowsPtDriver.sys

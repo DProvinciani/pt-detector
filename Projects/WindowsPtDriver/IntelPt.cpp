@@ -99,7 +99,7 @@ NTSTATUS StartCpuTrace(PT_TRACE_DESC desc, PT_BUFFER_DESCRIPTOR * pPtBuffDesc) {
 	// From KTHREAD go to ETHREAD, then use the ApcState field to return back to a EPROCESS
 	// Finally grab it from peProc->DirectoryTableBase (offset + 0x28) 
 	if (desc.peProc) {
-		targetCr3 = ((ULONG_PTR *)desc.peProc)[5];
+		targetCr3 = ((ULONG_PTR *)desc.peProc)[79];
 		// Check the found target CR3 (it should have the last 12 bits set to 0, due to the PFN standard)
 		if ((targetCr3 & 0xFFF) != 0) return STATUS_INVALID_ADDRESS;
 		DrvDbgPrint("[" DRV_NAME "] Starting Intel Processor Trace for processor %i. Target CR3: 0x%llX\r\n", curProcId, targetCr3);

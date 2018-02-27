@@ -9,6 +9,7 @@
  *  All right reserved
  **********************************************************************/
 #pragma once
+#include <iostream>
 #include "IntelPt.h"
 #include "..\WindowsPtDriver\DriverIo.h"
 
@@ -51,14 +52,11 @@ extern GLOBAL_DATA g_appData;		// (defined in EntryPoint.cpp)
 // Application Entry Point
 int wmain(int argc, LPTSTR argv[]);
 
-// Entry point without command line arguments
-int NoCmdlineStartup();
+// Entry point
+int ConfigureTrace(const std::wstring wsExecutableFullPath);
 
 // Show command line usage
-void ShowCommandLineUsage();
-
-// Parse command line
-bool ParseCommandLine(int argc, LPTSTR argv[]);
+void ShowHelp();
 
 // Check the support of Intel Processor Tarce on this CPU
 BOOL CheckIntelPtSupport(INTEL_PT_CAPABILITIES * lpPtCap);
@@ -69,10 +67,7 @@ DWORD WINAPI PmiThreadProc(LPVOID lpParameter);
 VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize);
 
 // Spawn a suspended process and oblige the loader to load the remote image in memory
-BOOL SpawnSuspendedProcess(LPTSTR lpAppName, LPTSTR lpCmdLine, PROCESS_INFORMATION * outProcInfo);
-
-// Parse the command line arguments
-bool ParseCommandLine();
+BOOL SpawnSuspendedProcess(const wchar_t* lpExecutableFullPath, wchar_t* lpCmdLine, PROCESS_INFORMATION * outProcInfo);
 
 // Initialize and open the per-CPU files and data structures
 bool InitPerCpuData(ULONG_PTR kCpuAffinity, LPTSTR lpBasePath);
@@ -81,7 +76,7 @@ bool InitPerCpuData(ULONG_PTR kCpuAffinity, LPTSTR lpBasePath);
 bool FreePerCpuData(BOOL bDeleteFiles = FALSE);
 
 // Write the human readable dump file header
-bool WriteCpuTextDumpsHeader(LPTSTR lpImgName, ULONG_PTR qwBase, DWORD dwSize);
+bool WriteCpuTextDumpsHeader(const wchar_t* lpExecutableFullPath, ULONG_PTR qwBase, DWORD dwSize);
 
 
 

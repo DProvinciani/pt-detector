@@ -168,6 +168,7 @@ xcopy /y "$(OutDir)*.pdb" "\\%REMOTE_IP%%REMOTE_PATH%"</Command>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="helpers.h" />
     <ClInclude Include="decoder\intel-pt.h" />
     <ClInclude Include="decoder\pt_cpu.h" />
     <ClInclude Include="decoder\pt_cpuid.h" />

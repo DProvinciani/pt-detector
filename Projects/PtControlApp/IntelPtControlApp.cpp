@@ -8,12 +8,15 @@
  *  Microsoft Ltd & TALOS Research and Intelligence Group
  *  All right reserved
  **********************************************************************/
+
+#include <crtdbg.h>
+#include <iostream>
 #include "stdafx.h"
 #include "IntelPtControlApp.h"
 #include "Psapi.h"
-#include <crtdbg.h>
 #include "pt_dump.h"
 #include "UndocNt.h"
+
 const LPTSTR g_ptDevName = L"\\\\.\\WindowsIntelPtDev"; // Using \\.\ allows to work with the Device Namespace: https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx
 #pragma comment (lib, "ntdll.lib")
 
@@ -29,12 +32,11 @@ static inline void Xtrace(LPCTSTR lpszFormat, ...)
 }
 
 // Entry point without command line arguments
-int NoCmdlineStartup()
+int ConfigureTrace(const std::wstring wsExecutableFullPath)
 {
 	BOOL bRetVal = FALSE;
 	INTEL_PT_CAPABILITIES ptCap = { 0 };
 	HANDLE hPtDev = NULL;							// Handle to the PT device
-	TCHAR procPath[MAX_PATH] = { 0 };				// The target process full path
 	PT_USER_REQ ptStartStruct = { 0 };				// The Intel PT starting structure
 	DWORD dwBytesIo = 0;							// Number of I/O bytes
 	DWORD dwCpusCount = 1;							// Number of CPUs in which to run the code (supporting only one by moment)
@@ -90,9 +92,6 @@ int NoCmdlineStartup()
 #pragma endregion
 
 #pragma region 2. Ask the user and check the CPU affinity
-	wprintf(L"Insert here the target process to trace: ");
-	wscanf_s(L"%s", procPath, MAX_PATH);
-
 	/*
 	Setting the cpuAffinity
 	A process affinity mask is a bit vector in which each bit represents a logical
@@ -107,7 +106,7 @@ int NoCmdlineStartup()
 #pragma endregion
 	
 #pragma region 3. Create the CPU buffer data structures and trace files
-	wprintf(L"Creating trace files (binary and readable)... ");
+	wprintf(L"Creating trace files... ");
 	bRetVal = (BOOL)InitPerCpuData(cpuAffinity, lpOutBasePath);
 
 	if (bRetVal) 
@@ -142,7 +141,7 @@ int NoCmdlineStartup()
 
 #pragma region 4. Spawn of the new process and PMI threads
 	wprintf(L"Creating target process... ");
-	bRetVal = SpawnSuspendedProcess(procPath, NULL, &pi);
+	bRetVal = SpawnSuspendedProcess(wsExecutableFullPath.c_str(), NULL, &pi);
 	if (bRetVal) cl_wprintf(GREEN, L"OK\r\n");
 	else {
 		wprintf(L"Error!\r\n");
@@ -212,7 +211,7 @@ int NoCmdlineStartup()
 	}		// END Tracing by IP block
 
 	// Write some information in the output text file:
-	WriteCpuTextDumpsHeader(procPath, (ULONG_PTR)remoteModInfo.lpBaseOfDll, remoteModInfo.SizeOfImage);
+	WriteCpuTextDumpsHeader(wsExecutableFullPath.c_str(), (ULONG_PTR)remoteModInfo.lpBaseOfDll, remoteModInfo.SizeOfImage);
 	ptStartStruct.bTraceUser = !bDoKernelTrace;
 	ptStartStruct.bTraceKernel = bDoKernelTrace;
 	// For now do not set the frequencies....
@@ -419,7 +418,7 @@ bool FreePerCpuData(BOOL bDeleteFiles) {
 }
 
 // Write the human readable dump file header
-bool WriteCpuTextDumpsHeader(LPTSTR lpImgName, ULONG_PTR qwBase, DWORD dwSize) {
+bool WriteCpuTextDumpsHeader(const wchar_t* lpExecutableFullPath, ULONG_PTR qwBase, DWORD dwSize) {
 	DWORD dwCurCpuCount = 0;			// Current CPU counter (different from ID)
 	DWORD dwNumOfCpus = 0;				// Total number of CPUs
 	KAFFINITY kCpuAffinity = 0;			// Current CPU affinity mask
@@ -431,8 +430,9 @@ bool WriteCpuTextDumpsHeader(LPTSTR lpImgName, ULONG_PTR qwBase, DWORD dwSize) {
 	dwNumOfCpus = g_appData.dwNumOfActiveCpus;
 	kCpuAffinity = g_appData.kActiveCpuAffinity;
 
-	if (lpImgName && wcsrchr(lpImgName, L'\\'))
-		lpImgName = wcsrchr(lpImgName, L'\\') + 1;
+    const wchar_t* lpExecutableName = nullptr;
+    if (lpExecutableFullPath && wcsrchr(lpExecutableFullPath, L'\\'))
+        lpExecutableName = wcsrchr(lpExecutableFullPath, L'\\') + 1;
 
 	for (int i = 0; i < sizeof(g_appData.kActiveCpuAffinity) * 8; i++) {
 		PT_CPU_BUFFER_DESC * pCurCpuBuff = &g_appData.pCpuDescArray[dwCurCpuCount];
@@ -445,7 +445,7 @@ bool WriteCpuTextDumpsHeader(LPTSTR lpImgName, ULONG_PTR qwBase, DWORD dwSize) {
 		sprintf_s(fullLine, COUNTOF(fullLine), "Intel PT Trace file. Version 0.5.\r\nCPU ID : %i\r\n", i);
 		WriteFile(hTextFile, fullLine, (DWORD)strlen(fullLine), &dwBytesIo, NULL);
 		if (qwBase && dwSize) {
-			sprintf_s(fullLine, COUNTOF(fullLine), "Executable name: %S\r\n", lpImgName);
+			sprintf_s(fullLine, COUNTOF(fullLine), "Executable name: %S\r\n", lpExecutableName);
 			WriteFile(hTextFile, fullLine, (DWORD)strlen(fullLine), &dwBytesIo, NULL);
 			sprintf_s(fullLine, COUNTOF(fullLine), "Base address: 0x%016llX - Size 0x%08X\r\n", (QWORD)qwBase, dwSize);
 			WriteFile(hTextFile, fullLine, (DWORD)strlen(fullLine), &dwBytesIo, NULL);
@@ -460,7 +460,7 @@ bool WriteCpuTextDumpsHeader(LPTSTR lpImgName, ULONG_PTR qwBase, DWORD dwSize) {
 }
 
 // Spawn a suspended process and oblige the loader to load the remote image in memory
-BOOL SpawnSuspendedProcess(LPTSTR lpAppName, LPTSTR lpCmdLine, PROCESS_INFORMATION * pOutProcInfo) {
+BOOL SpawnSuspendedProcess(const wchar_t* lpExecutableFullPath, wchar_t* lpCmdLine, PROCESS_INFORMATION * pOutProcInfo) {
 	BYTE remote_opcodes[] = { 0x90, 0x90, 0xc3, 0x90, 0x90 };			// NOP - RET opcodes
 	PROCESS_INFORMATION pi = { 0 };					// Process information
 	STARTUPINFO si = { 0 };							// The process Startup options
@@ -471,7 +471,7 @@ BOOL SpawnSuspendedProcess(LPTSTR lpAppName, LPTSTR lpCmdLine, PROCESS_INFORMATI
 	DWORD dwThrId = 0;								// Remote thread ID
 
 	si.cb = sizeof(STARTUPINFO);
-	bRetVal = CreateProcess(lpAppName, lpCmdLine, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+	bRetVal = CreateProcess(lpExecutableFullPath, lpCmdLine, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
 
 	// To get the remote image base address I need to instruct the Windows loader to load the 
 	// Target image file in memory, and to compile the PEB

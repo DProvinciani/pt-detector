@@ -13,7 +13,7 @@
 #include "IntelPt.h"
 #include "..\WindowsPtDriver\DriverIo.h"
 
-#define DEFAULT_TRACE_BUFF_SIZE 128 * 1024			// Default TRACE buffer size
+#define DEFAULT_TRACE_BUFF_SIZE 128 * 1024	// Default TRACE buffer size
 #define ROUND_TO_PAGES(Size)  (((ULONG_PTR)(Size) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
 #define PAGE_SIZE 0x1000
 
@@ -25,7 +25,7 @@ struct PT_CPU_BUFFER_DESC {
 	DWORD dwBuffSize;						// The PT buffer size in BYTEs
 	QWORD qwDelta;							// The delta value used in translating each packet
 	HANDLE hPmiThread;						// The handle of the current PMI thread
-	DWORD dwPmiThrId;						// The PMI Thread ID
+	DWORD dwPmiThreadId;					// The PMI Thread ID
 };
 
 // The Application global data
@@ -33,19 +33,20 @@ struct GLOBAL_DATA {
 	DWORD dwTraceBuffSize;						// The size of the trace buffer
 	BOOLEAN bTraceByIp;							// TRUE if I have to trace by IP
 	BOOLEAN bTraceOnlyKernel;					// TRUE if I would like to trace only kernel
-	HANDLE hPtDev;								// The handle to the Intel PT device
-	HANDLE hTargetProc;							// The traced process handle
-	HANDLE hExitEvt;							// The handle to the exit event
-	DWORD dwMainThrId;							// The main application thread ID
-	HANDLE hMainThr;							// The handle of the main application thread
+	HANDLE hPtDevice;							// The handle to the Intel PT device
+	HANDLE hTargetProcess;						// The traced process handle
+	HANDLE hExitEvent;							// The handle to the exit event
+	DWORD dwMainThreadId;						// The main application thread ID
+	HANDLE hMainThread;							// The handle of the main application thread
 	PT_USER_REQ currentTrace;
-	PT_CPU_BUFFER_DESC * pCpuDescArray;			// The PT CPU buffer descriptor array ptr
-	DWORD dwNumOfActiveCpus;					// The number of active CPUs
+	PT_CPU_BUFFER_DESC * pCpuBufferDescArray;	// The PT CPU buffer descriptor array
+	DWORD dwActiveCpus;				        	// The number of active CPUs
 	KAFFINITY kActiveCpuAffinity;				// The current active CPUs affinity mask
 
 	// Struct constructor
 	GLOBAL_DATA() { dwTraceBuffSize = DEFAULT_TRACE_BUFF_SIZE; bTraceByIp = TRUE; }
 };
+
 // The only unique GLOBAL_DATA structure
 extern GLOBAL_DATA g_appData;		// (defined in EntryPoint.cpp)
 
@@ -77,8 +78,6 @@ bool FreePerCpuData(BOOL bDeleteFiles = FALSE);
 
 // Write the human readable dump file header
 bool WriteCpuTextDumpsHeader(const wchar_t* lpExecutableFullPath, ULONG_PTR qwBase, DWORD dwSize);
-
-
 
 // AaLl86 Test driver stuff
 typedef struct _KERNEL_MODULE {

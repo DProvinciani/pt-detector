@@ -27,6 +27,7 @@ int wmain(int argc, LPTSTR argv[])
 
     CmdArgsParser inputCmds(argc, argv);
 
+    // verifying necessary parameters
     if (!inputCmds.WasOptionRequested(L"-t"))
     {
         if (!inputCmds.WasOptionRequested(L"-h"))
@@ -39,6 +40,7 @@ int wmain(int argc, LPTSTR argv[])
         return iRet;
     }
 
+    // validating the path and executable to trace
     executableTarget = inputCmds.GetOptionValue(L"-t");
     if (executableTarget.empty() ||
         !IsValidFile(executableTarget))
@@ -47,7 +49,7 @@ int wmain(int argc, LPTSTR argv[])
         std::wcerr << L"Provided executable is not valid" << std::endl << std::endl;
         return iRet;
     }
-    else
+    else // all was ok... lets configure the trace
         iRet = ConfigureTrace(executableTarget);
 
     return iRet;

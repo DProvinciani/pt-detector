@@ -16,45 +16,41 @@
 #include "Psapi.h"
 #include "pt_dump.h"
 #include "UndocNt.h"
+#include "helpers.h"
 
 const LPTSTR g_ptDeviceName = L"\\\\.\\WindowsIntelPtDev"; // Using \\.\ allows to work with the Device Namespace: https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx
 #pragma comment (lib, "ntdll.lib")
 
-static inline void Xtrace(LPCTSTR lpszFormat, ...)
-{
-	va_list args;
-	va_start(args, lpszFormat);
-	int nBuf;
-	TCHAR szBuffer[2048] = { 0 }; //fix this
-	nBuf = _vsnwprintf_s(szBuffer, 2047, lpszFormat, args);
-	::OutputDebugString(szBuffer);
-	va_end(args);
-}
-
 // Entry point without command line arguments
 int ConfigureTrace(const std::wstring wsExecutableFullPath)
 {
-	BOOL bRetVal = FALSE;
+	BOOL bReturn = FALSE;
+    DWORD dwLastError = 0;
     SYSTEM_INFO systemInfo = { 0 };                 // Struct to hold system information
 	INTEL_PT_CAPABILITIES ptCapabilities = { 0 };   // Struct to hold all the suported Intel PT capabilities
 	HANDLE hPtDevice = NULL;				    	// Handle to the PT device
+    LPTSTR lpOutputDir = NULL;			    		// Full path tho the output trace files directory
+    DWORD dwCpusToUse = 1;							// Number of CPUs in which to run the code (supporting only one by moment)
+    KAFFINITY cpuAffinity = 0;						// The processor Affinity mask
+    PT_CPU_BUFFER_DESC * pCpuBufferDescArray;		// The CPU PT buffer descriptor array
 	PT_USER_REQ ptStartStruct = { 0 };				// The Intel PT starting structure
 	DWORD dwBytesIo = 0;							// Number of I/O bytes
-	DWORD dwCpusCount = 1;							// Number of CPUs in which to run the code (supporting only one by moment)
-	DWORD dwLastErr = 0;							// Last Win32 Error
-	KAFFINITY cpuAffinity = 0;						// The processor Affinity mask
 	BOOLEAN bDoKernelTrace = FALSE;					// TRUE if I would like to do kernel tracing
-	PT_CPU_BUFFER_DESC * pCpuBufferDescArray;				// The CPU PT buffer descriptor array
-	LPTSTR lpOutputDir = NULL;			    		// Full path tho the output trace files directory
 	BOOLEAN bManuallyAllocBuff = FALSE;				// TRUE if I would like to manually allocate the buffer (used for test purposes)
 	BOOLEAN bDeleteFiles = FALSE;					// TRUE if some errors that require the file deletion
 	PROCESS_INFORMATION pi = { 0 };
 
-	// Getting system information and asking for Intel PT support
+#pragma region 0. Verifying system information, IntelPT support and opening IntelPT handler
+	// Getting current process information, system information and asking for Intel PT support
+    if (IsWow64(nullptr))
+        std::wcout << L"PtControlApp running under WOW64." << std::endl;
+    else
+        std::wcout << L"PtControlApp not running under WOW64." << std::endl;
+
 	GetNativeSystemInfo(&systemInfo);
-	bRetVal = CheckIntelPtSupport(&ptCapabilities);
-	wprintf(L"Intel Processor Tracing support for this CPU: ");
-	if (bRetVal) 
+	bReturn = CheckIntelPtSupport(&ptCapabilities);
+    std::wcout << L"Intel Processor Tracing support for this CPU: ";
+    if (bReturn) 
 		cl_wprintf(GREEN, L"YES\r\n"); 
 	else
 	{
@@ -64,42 +60,54 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath)
 
 	// Opening Intel PT device object
 	hPtDevice = CreateFile(g_ptDeviceName, FILE_ALL_ACCESS, 0, NULL, OPEN_EXISTING, 0, NULL);
-	dwLastErr = GetLastError();
+	dwLastError = GetLastError();
 
 	if (hPtDevice == INVALID_HANDLE_VALUE) {
-		std::wcerr << L"Unable to open the Intel PT device object!" << std::endl;
-		return 0;
+        cl_wprintf(RED, L"Error 0x%x\r\n", (LPVOID)dwLastError);
+        std::wcout << L"Unable to open the Intel PT device object." << std::endl;
+		return -1;
 	}
 	else
 		g_appData.hPtDevice = hPtDevice;
 
 	// Create the Exit Event
 	g_appData.hExitEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+#pragma endregion
 
 #pragma region 1. Generate output dump files directory 
-	SYSTEMTIME curTime = { 0 };
+    std::wcout << L"Creating trace output directory... ";
 
     // Allocate memory for the file names
     lpOutputDir = new TCHAR[MAX_PATH];
     RtlZeroMemory(lpOutputDir, MAX_PATH * sizeof(TCHAR));
 
 	GetModuleFileName(GetModuleHandle(NULL), lpOutputDir, MAX_PATH);
-	GetLocalTime(&curTime);
-	LPTSTR slashPtr = wcsrchr(lpOutputDir, L'\\');
-	if (slashPtr) slashPtr[1] = 0; 
+
+    SYSTEMTIME currentTime = { 0 };
+	GetLocalTime(&currentTime);
+
+	LPTSTR pLastSlash = wcsrchr(lpOutputDir, L'\\');
+	if (pLastSlash) pLastSlash[1] = 0; 
+
 	swprintf_s(lpOutputDir, MAX_PATH, L"%s%.2i%.2i-%.2i%.2i%.4i_Dumps",
-		lpOutputDir, curTime.wHour, curTime.wMinute, curTime.wMonth, curTime.wDay, curTime.wYear);
+		lpOutputDir, currentTime.wHour, currentTime.wMinute, currentTime.wMonth, currentTime.wDay, currentTime.wYear);
 	CreateDirectory(lpOutputDir, NULL);
+
+    cl_wprintf(GREEN, L"DONE\r\n");
 #pragma endregion
 
-#pragma region 2. Ask the user and check the CPU affinity
+#pragma region 2. Calculate the CPU affinity
 	/*
 	Setting the cpuAffinity
 	A process affinity mask is a bit vector in which each bit represents a logical
 	processor on which the threads of the process are allowed to run.
 	*/
-	if (systemInfo.dwNumberOfProcessors > 1) {
-		cpuAffinity = ((DWORD_PTR)(-1i64) >> ((sizeof(DWORD_PTR) * 8) - dwCpusCount));
+
+    if (systemInfo.dwNumberOfProcessors > 1) {
+        // -1i64 creates a 64 bit variable with all the bits set to 1
+        // The cast to DWORD_PTR ensures that the right shift will fill the vacant bits with 0 (because DWORD_PTR is unsigned)
+        // The number operation to calculate the number of bits to shift is basically 8*8 = 64 - NumberOfCPUsToUse
+		cpuAffinity = ((DWORD_PTR)(-1i64) >> ((sizeof(DWORD_PTR) * 8) - dwCpusToUse));
 	}
 	else {
 		cpuAffinity = systemInfo.dwActiveProcessorMask;
@@ -107,43 +115,45 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath)
 #pragma endregion
 	
 #pragma region 3. Create the CPU buffer data structures and trace files
-	wprintf(L"Creating trace files... ");
-	bRetVal = (BOOL)InitPerCpuData(cpuAffinity, lpOutputDir);
+	std::wcout << L"Creating trace output files... ";
+	bReturn = (BOOL)InitPerCpuData(cpuAffinity, lpOutputDir);
 
-	if (bRetVal) 
-		cl_wprintf(GREEN, L"OK\r\n");
+	if (bReturn) 
+		cl_wprintf(GREEN, L"DONE\r\n");
 	else {
-		// If because of any reason the per CPU data files creation fails
-		// we try again using the temp directory
+        cl_wprintf(RED, L"FAIL\r\n");
+        std::wcout << L"    Attempting now ussing TEMP directory... ";
+
+        // If because of any reason the per CPU data files creation fails we try again using the temp directory
 		RemoveDirectory(lpOutputDir);
-		dwBytesIo = GetTempPath(MAX_PATH, lpOutputDir);
-		LPTSTR slashPtr = wcsrchr(lpOutputDir, L'\\');
-		if (lpOutputDir[dwBytesIo - 1] == '\\')  lpOutputDir[--dwBytesIo] = 0;
-		swprintf_s(lpOutputDir, MAX_PATH, L"%s\\IntelPt_Dumps_%.2i%.2i-%.2i%.2i%.4i",
-			lpOutputDir, curTime.wHour, curTime.wMinute, curTime.wMonth, curTime.wDay, curTime.wYear);
+        RtlZeroMemory(lpOutputDir, MAX_PATH * sizeof(TCHAR));
+		
+        DWORD dwTempPathLenght = GetTempPath(MAX_PATH, lpOutputDir);
+		if (lpOutputDir[dwTempPathLenght - 1] == '\\')  lpOutputDir[dwTempPathLenght - 1] = 0;
+		
+        swprintf_s(lpOutputDir, MAX_PATH, L"%s\\IntelPt_Dumps_%.2i%.2i-%.2i%.2i%.4i",
+			lpOutputDir, currentTime.wHour, currentTime.wMinute, currentTime.wMonth, currentTime.wDay, currentTime.wYear);
 		CreateDirectory(lpOutputDir, NULL);
-		bRetVal = (BOOL)InitPerCpuData(cpuAffinity, lpOutputDir);
-		if (bRetVal) {
-			cl_wprintf(GREEN, L"Success! ");
-			wprintf(L"(in TEMP directory)\r\n");
-		}
+
+		bReturn = (BOOL)InitPerCpuData(cpuAffinity, lpOutputDir);
+		if (bReturn)
+			cl_wprintf(GREEN, L"DONE\r\n");
+        else {
+            RemoveDirectory(lpOutputDir);
+            cl_wprintf(RED, L"FAIL\r\n");
+            std::wcout << L"    Closing IntelPT device handler." << std::endl;
+            CloseHandle(hPtDevice);
+            return -1;
+        }
 	}
 
-	// Last check... if the creation failed also in the temp directory, we print the error message
-	if (!bRetVal) {
-		RemoveDirectory(lpOutputDir);
-		cl_wprintf(RED, L"Error!\r\n");
-		wprintf(L"Unable to create the output dump file.\r\n");
-		CloseHandle(hPtDevice);
-		return -1;
-	}
 	pCpuBufferDescArray = g_appData.pCpuBufferDescArray;
 #pragma endregion
 
 #pragma region 4. Spawn of the new process and PMI threads
 	wprintf(L"Creating target process... ");
-	bRetVal = SpawnSuspendedProcess(wsExecutableFullPath.c_str(), NULL, &pi);
-	if (bRetVal) cl_wprintf(GREEN, L"OK\r\n");
+	bReturn = SpawnSuspendedProcess(wsExecutableFullPath.c_str(), NULL, &pi);
+	if (bReturn) cl_wprintf(GREEN, L"OK\r\n");
 	else {
 		wprintf(L"Error!\r\n");
 		FreePerCpuData(TRUE);
@@ -154,15 +164,15 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath)
 	}
 	g_appData.hTargetProcess = pi.hProcess;
 
-	bRetVal = SetProcessAffinityMask(pi.hProcess, cpuAffinity);
-	_ASSERT(bRetVal);
-	if (!bRetVal) {
+	bReturn = SetProcessAffinityMask(pi.hProcess, cpuAffinity);
+	_ASSERT(bReturn);
+	if (!bReturn) {
 		cl_wprintf(YELLOW, L"Warning!\r\n");
 		wprintf(L"   Unable Set the processor affinity for the spawned process.\r\n");
 	}
 
 	// Create the PMI threads (1 per target CPU)
-	for (int i = 0; i < (int)dwCpusCount; i++) {
+	for (int i = 0; i < (int)dwCpusToUse; i++) {
 		PT_PMI_USER_CALLBACK pmiDesc = { 0 };
 		HANDLE hNewThr = NULL;
 		DWORD newThrId = 0;
@@ -172,8 +182,8 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath)
 		pmiDesc.dwThrId = newThrId;
 		pmiDesc.kCpuAffinity = (1i64 << i);
 		pmiDesc.lpAddress = PmiCallback;
-		bRetVal = DeviceIoControl(hPtDevice, IOCTL_PTDRV_REGISTER_PMI_ROUTINE, (LPVOID)&pmiDesc, sizeof(PT_PMI_USER_CALLBACK), NULL, 0, &dwBytesIo, NULL);
-		if (bRetVal) {
+		bReturn = DeviceIoControl(hPtDevice, IOCTL_PTDRV_REGISTER_PMI_ROUTINE, (LPVOID)&pmiDesc, sizeof(PT_PMI_USER_CALLBACK), NULL, 0, &dwBytesIo, NULL);
+		if (bReturn) {
 			pCpuBufferDescArray[i].dwPmiThreadId = newThrId;
 			pCpuBufferDescArray[i].hPmiThread = hNewThr;
 			ResumeThread(hNewThr);
@@ -186,16 +196,16 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath)
 	MODULEINFO remoteModInfo = { 0 };				// The remote module information
 	if (g_appData.bTraceByIp) {
 		// Now grab the remote image base address and size
-		bRetVal = EnumProcessModules(pi.hProcess, &hRemoteMod, sizeof(HMODULE), &dwBytesIo);
-		bRetVal = GetModuleInformation(pi.hProcess, hRemoteMod, &remoteModInfo, sizeof(MODULEINFO));
-		dwLastErr = GetLastError();
+		bReturn = EnumProcessModules(pi.hProcess, &hRemoteMod, sizeof(HMODULE), &dwBytesIo);
+		bReturn = GetModuleInformation(pi.hProcess, hRemoteMod, &remoteModInfo, sizeof(MODULEINFO));
+		dwLastError = GetLastError();
 
 		g_appData.bTraceOnlyKernel = bDoKernelTrace;
 
 		if (!remoteModInfo.lpBaseOfDll) {
 			cl_wprintf(RED, L"Error! ");
 			wprintf(L"I was not able to find the target process main module base address and size.\r\n");
-			FreePerCpuData();
+			FreePerCpuData(TRUE);
 			CloseHandle(hPtDevice);
 			return -1;
 		}
@@ -222,17 +232,17 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath)
 #pragma endregion
 
 #pragma region 6. Allocate each PT CPU buffer and Start the tracing and wait the process to exit
-	LPVOID * lpBuffArray = new LPVOID[dwCpusCount];
-	RtlZeroMemory(lpBuffArray, sizeof(LPVOID)* dwCpusCount);
+	LPVOID * lpBuffArray = new LPVOID[dwCpusToUse];
+	RtlZeroMemory(lpBuffArray, sizeof(LPVOID)* dwCpusToUse);
 	
 	// Start the device Tracing
 	wprintf(L"Starting the Tracing and resuming the process... ");
 	ptStartStruct.dwProcessId = pi.dwProcessId;
 	ptStartStruct.kCpuAffinity = cpuAffinity;
-	bRetVal = DeviceIoControl(hPtDevice, IOCTL_PTDRV_START_TRACE, (LPVOID)&ptStartStruct, sizeof(PT_USER_REQ), lpBuffArray, sizeof(LPVOID) * dwCpusCount, &dwBytesIo, NULL);
-	dwLastErr = GetLastError();
+	bReturn = DeviceIoControl(hPtDevice, IOCTL_PTDRV_START_TRACE, (LPVOID)&ptStartStruct, sizeof(PT_USER_REQ), lpBuffArray, sizeof(LPVOID) * dwCpusToUse, &dwBytesIo, NULL);
+	dwLastError = GetLastError();
 
-	if (bRetVal) {
+	if (bReturn) {
 		cl_wprintf(GREEN, L"OK\r\n\r\n");
 		g_appData.currentTrace = ptStartStruct;
 
@@ -251,13 +261,13 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath)
 	else {
 		TerminateProcess(pi.hProcess, -1);
 		cl_wprintf(RED, L"FAIL\r\n");
-		cl_wprintf(RED, L"        Start trace failed with error 0x%x\r\n\r\n", (LPVOID)dwLastErr);
+		cl_wprintf(RED, L"        Start trace failed with error 0x%x\r\n\r\n", (LPVOID)dwLastError);
 		bDeleteFiles = TRUE;
 	}
 
 	// Set the event and wait for all PMI thread to exit
 	SetEvent(g_appData.hExitEvent);
-	for (int i = 0; i < (int)dwCpusCount; i++) {
+	for (int i = 0; i < (int)dwCpusToUse; i++) {
 		WaitForSingleObject(pCpuBufferDescArray[i].hPmiThread, INFINITE);
 		CloseHandle(pCpuBufferDescArray[i].hPmiThread);
 		pCpuBufferDescArray[i].hPmiThread = NULL;
@@ -274,8 +284,8 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath)
 		if (!(cpuAffinity & (1i64 << i))) continue;
 
 		RtlZeroMemory(&ptDetails, sizeof(ptDetails));
-		bRetVal = DeviceIoControl(hPtDevice, IOCTL_PTDR_GET_TRACE_DETAILS, (LPVOID)&i, sizeof(int), (LPVOID)&ptDetails, sizeof(ptDetails), &dwBytesIo, NULL);
-		if (bRetVal)
+		bReturn = DeviceIoControl(hPtDevice, IOCTL_PTDR_GET_TRACE_DETAILS, (LPVOID)&i, sizeof(int), (LPVOID)&ptDetails, sizeof(ptDetails), &dwBytesIo, NULL);
+		if (bReturn)
 			wprintf(L"        Number of acquired packets: %I64i\r\n", ptDetails.qwTotalNumberOfPackets);
 		else
 			cl_wprintf(RED, L"        Error getting trace details!\r\n");
@@ -286,13 +296,13 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath)
 
 #pragma region 8. Free the resources and close each files
 	// Stop the Tracing (and clear the buffer if not manually allocated)
-	bRetVal = DeviceIoControl(hPtDevice, IOCTL_PTDRV_CLEAR_TRACE, (LPVOID)&cpuAffinity, sizeof(cpuAffinity), NULL, 0, &dwBytesIo, NULL);
+	bReturn = DeviceIoControl(hPtDevice, IOCTL_PTDRV_CLEAR_TRACE, (LPVOID)&cpuAffinity, sizeof(cpuAffinity), NULL, 0, &dwBytesIo, NULL);
 
 	CloseHandle(pi.hProcess); 
 	CloseHandle(pi.hThread);
 	FreePerCpuData(bDeleteFiles);
 	if (bManuallyAllocBuff)
-		bRetVal = DeviceIoControl(g_appData.hPtDevice, IOCTL_PTDRV_FREE_BUFFERS, (LPVOID)&cpuAffinity,
+		bReturn = DeviceIoControl(g_appData.hPtDevice, IOCTL_PTDRV_FREE_BUFFERS, (LPVOID)&cpuAffinity,
 			sizeof(cpuAffinity), NULL, 0, &dwBytesIo, NULL);
 
 
@@ -343,81 +353,83 @@ BOOL CheckIntelPtSupport(INTEL_PT_CAPABILITIES * lpPtCapabilities)
 }
 
 // Initialize and open the per-CPU files and data structures
-bool InitPerCpuData(ULONG_PTR kCpuAffinity, LPTSTR lpBasePath) {
- 	PT_CPU_BUFFER_DESC * pCpuArray = NULL;				// The new PER-CPU array
+bool InitPerCpuData(KAFFINITY cpuAffinity, LPTSTR lpOutputDir) {
+ 	PT_CPU_BUFFER_DESC * pCpuBufferDescArray = NULL;	// The new PER-CPU buffer array
+    DWORD dwCpusToUse = 0;								// Number of CPUs to use
+    DWORD dwCurrentCpu = 0;	    						// Current CPU
+    TCHAR newFileName[MAX_PATH] = { 0 };                // The new file name string
 	HANDLE hNewFile = NULL;								// The handle of the new file
-	TCHAR newFileName[MAX_PATH] = { 0 };
-	DWORD dwPathLen = 0;
-	DWORD dwNumOfCpus = 0,								// Total number of CPUs
-		dwCurCpuCount = 0;								// Current CPU counter (different from ID)
 
-	FreePerCpuData();
-	for (int i = 0; i < sizeof(kCpuAffinity) * 8; i++)
-		if (kCpuAffinity & (1i64 << i)) dwNumOfCpus++;
+	FreePerCpuData(FALSE);
+	for (int i = 0; i < sizeof(cpuAffinity) * 8; i++)
+		if (cpuAffinity & (1i64 << i)) dwCpusToUse++;
 
-	pCpuArray = new PT_CPU_BUFFER_DESC[dwNumOfCpus];
-	RtlZeroMemory(pCpuArray, sizeof(PT_CPU_BUFFER_DESC) * dwNumOfCpus);
-	g_appData.dwActiveCpus = dwNumOfCpus;
-	g_appData.kActiveCpuAffinity = kCpuAffinity;
-	g_appData.pCpuBufferDescArray = pCpuArray;
+	pCpuBufferDescArray = new PT_CPU_BUFFER_DESC[dwCpusToUse];
+	RtlZeroMemory(pCpuBufferDescArray, sizeof(PT_CPU_BUFFER_DESC) * dwCpusToUse);
+	g_appData.dwActiveCpus = dwCpusToUse;
+	g_appData.kActiveCpusAffinity = cpuAffinity;
+	g_appData.pCpuBufferDescArray = pCpuBufferDescArray;
 
-	dwPathLen = (DWORD)wcslen(lpBasePath);
+	for (int i = 0; sizeof(cpuAffinity) * 8; i++) {
+		PT_CPU_BUFFER_DESC * pCurrentCpuBufferDesc = &pCpuBufferDescArray[dwCurrentCpu];
+		if (!(cpuAffinity & (1i64 << i))) continue;
+		if (dwCurrentCpu >= dwCpusToUse) break;
 
-	for (int i = 0; sizeof(kCpuAffinity) * 8; i++) {
-		PT_CPU_BUFFER_DESC * pCurCpuDesc = &pCpuArray[dwCurCpuCount];
-		if (!(kCpuAffinity & (1i64 << i))) continue;
-		if (dwCurCpuCount >= dwNumOfCpus) break;
+		RtlZeroMemory(newFileName, MAX_PATH * sizeof(TCHAR));
+		swprintf_s(newFileName, MAX_PATH, L"%s\\cpu%.2i_bin.bin", lpOutputDir, i);
 
-		newFileName[0] = 0;
-		swprintf_s(newFileName, MAX_PATH, L"%s\\cpu%.2i_bin.bin", lpBasePath, i);
 		// Create the binary file 
 		hNewFile = CreateFile(newFileName, FILE_GENERIC_WRITE | DELETE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
 
-		// Create the text file 
 		if (hNewFile != INVALID_HANDLE_VALUE) {
-			pCurCpuDesc->hBinFile = hNewFile;
-			newFileName[0] = 0;
-			swprintf_s(newFileName, MAX_PATH, L"%s\\cpu%.2i_text.log", lpBasePath, i);
+			pCurrentCpuBufferDesc->hBinFile = hNewFile;
+
+            RtlZeroMemory(newFileName, MAX_PATH * sizeof(TCHAR));
+			swprintf_s(newFileName, MAX_PATH, L"%s\\cpu%.2i_text.log", lpOutputDir, i);
+
+            // Create the text file 
 			hNewFile = CreateFile(newFileName, FILE_GENERIC_WRITE | DELETE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
+
+            if (hNewFile != INVALID_HANDLE_VALUE)
+                pCurrentCpuBufferDesc->hTextFile = hNewFile;
+            else {
+                FreePerCpuData(TRUE);
+                return false;
+            }
 		}
-		if (hNewFile != INVALID_HANDLE_VALUE)
-			pCurCpuDesc->hTextFile = hNewFile;
-		else {
-			FreePerCpuData(TRUE);
-			return false;
-		}
-		dwCurCpuCount++;
+
+		dwCurrentCpu++;
 	}
 	return true;
 }
 
 // Close and flush the per-CPU files and data structures
 bool FreePerCpuData(BOOL bDeleteFiles) {
-	PT_CPU_BUFFER_DESC * pCpuDesc = NULL;				// Current CPU Descriptor
+	PT_CPU_BUFFER_DESC * pCurrentCpuBufferDesc = NULL;	// Current CPU buffer descriptor
 	BOOLEAN bBuffValid = FALSE;
-	DWORD dwBytesIo = 0;
+
 	if (g_appData.pCpuBufferDescArray == NULL) return false;
 
 	for (int i = 0; i < (int)g_appData.dwActiveCpus; i++) {
-		pCpuDesc = &g_appData.pCpuBufferDescArray[i];
-		if (pCpuDesc->hBinFile) {
+		pCurrentCpuBufferDesc = &g_appData.pCpuBufferDescArray[i];
+		if (pCurrentCpuBufferDesc->hBinFile) {
 			if (bDeleteFiles)
-				SetFileInformationByHandle(pCpuDesc->hBinFile, FileDispositionInfo, (LPVOID)&bDeleteFiles, sizeof(BOOL));
-			CloseHandle(pCpuDesc->hBinFile); pCpuDesc->hBinFile = NULL;
+				SetFileInformationByHandle(pCurrentCpuBufferDesc->hBinFile, FileDispositionInfo, (LPVOID)&bDeleteFiles, sizeof(BOOL));
+			CloseHandle(pCurrentCpuBufferDesc->hBinFile); pCurrentCpuBufferDesc->hBinFile = NULL;
 		}
-		if (pCpuDesc->hTextFile) {
+		if (pCurrentCpuBufferDesc->hTextFile) {
 			if (bDeleteFiles)
-				SetFileInformationByHandle(pCpuDesc->hTextFile, FileDispositionInfo, (LPVOID)&bDeleteFiles, sizeof(BOOL));
-			CloseHandle(pCpuDesc->hTextFile); pCpuDesc->hTextFile = NULL;
+				SetFileInformationByHandle(pCurrentCpuBufferDesc->hTextFile, FileDispositionInfo, (LPVOID)&bDeleteFiles, sizeof(BOOL));
+			CloseHandle(pCurrentCpuBufferDesc->hTextFile); pCurrentCpuBufferDesc->hTextFile = NULL;
 		}
-		if (pCpuDesc->lpPtBuff) bBuffValid = TRUE;
+		if (pCurrentCpuBufferDesc->lpPtBuff) bBuffValid = TRUE;
 	}
 
 	// The actual PT buffer deallocation is done in the main routine (by the PT driver)
 	delete[] g_appData.pCpuBufferDescArray;
 	g_appData.pCpuBufferDescArray = NULL;
 	g_appData.dwActiveCpus = 0;
-	g_appData.kActiveCpuAffinity = 0;
+	g_appData.kActiveCpusAffinity = 0;
 	return true;
 }
 
@@ -432,13 +444,13 @@ bool WriteCpuTextDumpsHeader(const wchar_t* lpExecutableFullPath, ULONG_PTR qwBa
 
 	// Grab some basic data
 	dwNumOfCpus = g_appData.dwActiveCpus;
-	kCpuAffinity = g_appData.kActiveCpuAffinity;
+	kCpuAffinity = g_appData.kActiveCpusAffinity;
 
     const wchar_t* lpExecutableName = nullptr;
     if (lpExecutableFullPath && wcsrchr(lpExecutableFullPath, L'\\'))
         lpExecutableName = wcsrchr(lpExecutableFullPath, L'\\') + 1;
 
-	for (int i = 0; i < sizeof(g_appData.kActiveCpuAffinity) * 8; i++) {
+	for (int i = 0; i < sizeof(g_appData.kActiveCpusAffinity) * 8; i++) {
 		PT_CPU_BUFFER_DESC * pCurCpuBuff = &g_appData.pCpuBufferDescArray[dwCurCpuCount];
 		HANDLE hTextFile = NULL;
 		if (!(kCpuAffinity & (1i64 << i))) continue;
@@ -533,7 +545,7 @@ DWORD WINAPI PmiThreadProc(LPVOID lpParameter) {
 		// WAIT_IO_COMPLETION means APC has been queued
 		if (dwEvtNum - WAIT_OBJECT_0 == 1) {
 			// We are exiting, pause the Tracing
-			DeviceIoControl(g_appData.hPtDevice, IOCTL_PTDRV_PAUSE_TRACE, (LPVOID)&g_appData.kActiveCpuAffinity, sizeof(KAFFINITY), NULL, 0, &dwBytesIo, NULL);
+			DeviceIoControl(g_appData.hPtDevice, IOCTL_PTDRV_PAUSE_TRACE, (LPVOID)&g_appData.kActiveCpusAffinity, sizeof(KAFFINITY), NULL, 0, &dwBytesIo, NULL);
 			break;
 		}
 		// Continue to wait on the PMI Event, and raise the appropriate Callbacks
@@ -586,7 +598,7 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
 
 	// Convert the CPU ID in descriptor number
 	for (int i = 0; i < sizeof(KAFFINITY) * 8; i++) {
-		if ((1i64 << i) & g_appData.kActiveCpuAffinity) {
+		if ((1i64 << i) & g_appData.kActiveCpusAffinity) {
 			if (i == dwCpuId) break;
 			dwDescNum++;
 		}

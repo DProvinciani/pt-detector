@@ -18,12 +18,12 @@ GLOBAL_DATA g_appData;
 
 int wmain(int argc, LPTSTR argv[])
 {
-    int iRet = 0;
+    int iReturn = 0;
     std::wstring executableTarget = L"";
 
     cl_wprintf(DARKYELLOW, L"\r\n    *** Code-Reuse Exploits Detector ***\r\n\r\n");
 
-    //system("pause");
+    system("pause");
 
     CmdArgsParser inputCmds(argc, argv);
 
@@ -32,12 +32,12 @@ int wmain(int argc, LPTSTR argv[])
     {
         if (!inputCmds.WasOptionRequested(L"-h"))
         {
-            cl_wprintf(RED, L"Error!\r\n");
-            std::wcerr << L"Make sure to provide all the required arguments." << std::endl << std::endl;
+            cl_wprintf(RED, L"Error\r\n");
+            std::wcout << L"Make sure to provide all the required arguments." << std::endl << std::endl;
         }
 
         ShowHelp();
-        return iRet;
+        return iReturn;
     }
 
     // validating the path and executable to trace
@@ -45,20 +45,20 @@ int wmain(int argc, LPTSTR argv[])
     if (executableTarget.empty() ||
         !IsValidFile(executableTarget))
     {
-        cl_wprintf(RED, L"Error!\r\n");
-        std::wcerr << L"Provided executable is not valid" << std::endl << std::endl;
-        return iRet;
+        cl_wprintf(RED, L"Error\r\n");
+        std::wcout << L"Provided executable is not valid" << std::endl << std::endl;
+        return iReturn;
     }
     else // all was ok... lets configure the trace
-        iRet = ConfigureTrace(executableTarget);
+        iReturn = ConfigureTrace(executableTarget);
 
-    return iRet;
+    return iReturn;
 }
 
 // Show command line usage
 void ShowHelp()
 {
-    std::wcerr << L"PtControlApp usage:" << std::endl;
-    std::wcerr << L"PtControlApp.exe -h for help" << std::endl;
-    std::wcerr << L"PtControlApp.exe -t <executable_to_trace_fullpath>" << std::endl;
+    std::wcout << L"PtControlApp usage:" << std::endl;
+    std::wcout << L"PtControlApp.exe -h for help" << std::endl;
+    std::wcout << L"PtControlApp.exe -t <executable_to_trace_fullpath>" << std::endl;
 }

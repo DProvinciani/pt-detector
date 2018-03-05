@@ -38,10 +38,10 @@ struct GLOBAL_DATA {
 	HANDLE hExitEvent;							// The handle to the exit event
 	DWORD dwMainThreadId;						// The main application thread ID
 	HANDLE hMainThread;							// The handle of the main application thread
-	PT_USER_REQ currentTrace;
+	PT_USER_REQ currentTrace;                   // The Intel PT starting structure
 	PT_CPU_BUFFER_DESC * pCpuBufferDescArray;	// The PT CPU buffer descriptor array
 	DWORD dwActiveCpus;				        	// The number of active CPUs
-	KAFFINITY kActiveCpuAffinity;				// The current active CPUs affinity mask
+	KAFFINITY kActiveCpusAffinity;				// The active CPUs affinity mask
 
 	// Struct constructor
 	GLOBAL_DATA() { dwTraceBuffSize = DEFAULT_TRACE_BUFF_SIZE; bTraceByIp = TRUE; }
@@ -71,10 +71,10 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize);
 BOOL SpawnSuspendedProcess(const wchar_t* lpExecutableFullPath, wchar_t* lpCmdLine, PROCESS_INFORMATION * outProcInfo);
 
 // Initialize and open the per-CPU files and data structures
-bool InitPerCpuData(ULONG_PTR kCpuAffinity, LPTSTR lpBasePath);
+bool InitPerCpuData(KAFFINITY cpuAffinity, LPTSTR lpOutputDir);
 
 // Close and flush the per-CPU files and data structures
-bool FreePerCpuData(BOOL bDeleteFiles = FALSE);
+bool FreePerCpuData(BOOL bDeleteFiles);
 
 // Write the human readable dump file header
 bool WriteCpuTextDumpsHeader(const wchar_t* lpExecutableFullPath, ULONG_PTR qwBase, DWORD dwSize);

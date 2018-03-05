@@ -5,7 +5,47 @@
 #include <string>
 #include <vector>
 
-bool IsValidFile(const std::wstring &fileName)
+typedef BOOL(WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
+
+static inline void Xtrace(LPCTSTR lpszFormat, ...)
+{
+    va_list args;
+    va_start(args, lpszFormat);
+    int nBuf;
+    TCHAR szBuffer[2048] = { 0 }; //fix this
+    nBuf = _vsnwprintf_s(szBuffer, 2047, lpszFormat, args);
+    ::OutputDebugString(szBuffer);
+    va_end(args);
+}
+
+// If nullptr is received, the function returns information about the current process
+static inline BOOL IsWow64(HANDLE hProcessHandler)
+{
+    BOOL bIsWow64 = FALSE;
+
+    //IsWow64Process is not available on all supported versions of Windows.
+    //Use GetModuleHandle to get a handle to the DLL that contains the function
+    //and GetProcAddress to get a pointer to the function if available.
+
+    LPFN_ISWOW64PROCESS fnIsWow64Process;
+
+    fnIsWow64Process = (LPFN_ISWOW64PROCESS)GetProcAddress(
+        GetModuleHandle(TEXT("kernel32")), "IsWow64Process");
+
+    if (NULL != fnIsWow64Process)
+    {
+        if (!hProcessHandler)
+            hProcessHandler = GetCurrentProcess();
+        
+        if (!fnIsWow64Process(hProcessHandler, &bIsWow64))
+        {
+            //handle error
+        }
+    }
+    return bIsWow64;
+}
+
+static inline bool IsValidFile(const std::wstring &fileName)
 {
     bool ret = false;
     HANDLE hFile = INVALID_HANDLE_VALUE;

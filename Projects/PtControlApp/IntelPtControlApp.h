@@ -54,7 +54,7 @@ extern GLOBAL_DATA g_appData;		// (defined in EntryPoint.cpp)
 int wmain(int argc, LPTSTR argv[]);
 
 // Entry point
-int ConfigureTrace(const std::wstring wsExecutableFullPath);
+int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring wsCommandLine);
 
 // Show command line usage
 void ShowHelp();
@@ -68,10 +68,10 @@ DWORD WINAPI PmiThreadProc(LPVOID lpParameter);
 VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize);
 
 // Spawn a suspended process and oblige the loader to load the remote image in memory
-BOOL SpawnSuspendedProcess(const wchar_t* lpExecutableFullPath, wchar_t* lpCmdLine, PROCESS_INFORMATION * outProcInfo);
+BOOL SpawnSuspendedProcess(const std::wstring wsExecutableFullPath, PROCESS_INFORMATION * pProcessInfo, std::wstring wsCommandLine = L"");
 
 // Initialize and open the per-CPU files and data structures
-bool InitPerCpuData(KAFFINITY cpuAffinity, LPTSTR lpOutputDir);
+bool InitPerCpuData(DWORD dwCpusToUse, KAFFINITY cpuAffinity, LPTSTR lpOutputDir);
 
 // Close and flush the per-CPU files and data structures
 bool FreePerCpuData(BOOL bDeleteFiles);

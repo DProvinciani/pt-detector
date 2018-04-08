@@ -11,19 +11,37 @@
 #pragma once
 
 #include "targetver.h"
-
 #include <stdio.h>
 #include <tchar.h>
+#include <iostream>
+#include <string>
+#include <vector>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 typedef unsigned long long QWORD;
 
-// Get if a file Exist
-bool FileExists(LPTSTR fileName);
+class CmdArgsParser {
+public:
+    CmdArgsParser(int argc, wchar_t *argv[]);
+    const std::wstring& GetOptionValue(const std::wstring &cmdOption) const;
+    bool HasOption(const std::wstring &cmdOption) const;
 
-// Get Last Win32 Error description
+private:
+    std::vector <std::wstring> cmdTokens;
+};
+
+// Xtrace logging
+void Xtrace(LPCTSTR lpszFormat, ...);
+
+// WOW64 process checker
+BOOL IsWow64(HANDLE hProcessHandler);
+
+// Check if a file is an executable
+bool IsExecutable(const std::wstring &fileName);
+
+// Get last Win32 error description
 LPTSTR GetWin32ErrorMessage(DWORD errNum);
 
 // Read a line of input from a console
@@ -34,9 +52,9 @@ enum ConsoleColor {
 	GRAY, DARKGRAY, BLUE, GREEN, TEAL, RED, PINK, YELLOW, WHITE
 };
 
-// Set console text Color
+// Set console text color
 void SetConsoleColor(ConsoleColor c);
-// Get console text Color
+// Get console text color
 int GetCurrentConsoleColor();
 // Color WPrintf 
 void cl_wprintf(ConsoleColor c, LPTSTR string, LPVOID arg1 = NULL, LPVOID arg2 = NULL, LPVOID arg3 = NULL, LPVOID arg4 = NULL);

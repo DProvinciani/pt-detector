@@ -167,8 +167,8 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 	bReturn = SetProcessAffinityMask(processInfo.hProcess, cpuAffinity);
 	_ASSERT(bReturn);
 	if (!bReturn) {
-		cl_wprintf(YELLOW, L"Warning!\r\n");
-		wprintf(L"   Unable Set the processor affinity for the spawned process.\r\n");
+		cl_wprintf(YELLOW, L"WARNING\r\n");
+        std::wcout << L"    Unable Set the processor affinity for the spawned process." << std::endl;
 	}
 
 	// Create the PMI threads (1 per target CPU)
@@ -197,17 +197,17 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 #pragma region 5. Set IP filtering (if any) and TRACE options
 	HMODULE hRemoteMod = NULL;						// The remote module base address
 	MODULEINFO remoteModInfo = { 0 };				// The remote module information
+
 	if (g_appData.bTraceByIp) {
 		// Now grab the remote image base address and size
 		bReturn = EnumProcessModules(processInfo.hProcess, &hRemoteMod, sizeof(HMODULE), &dwBytesIo);
 		bReturn = GetModuleInformation(processInfo.hProcess, hRemoteMod, &remoteModInfo, sizeof(MODULEINFO));
-		dwLastError = GetLastError();
 
 		g_appData.bTraceOnlyKernel = bDoKernelTrace;
 
 		if (!remoteModInfo.lpBaseOfDll) {
-			cl_wprintf(RED, L"Error! ");
-			wprintf(L"I was not able to find the target process main module base address and size.\r\n");
+			cl_wprintf(RED, L"FAIL\r\n");
+            std::wcout << L"    I was not able to find the target process main module base address and size."  << std::endl;
 			FreePerCpuData(TRUE);
 			CloseHandle(hPtDevice);
 			return -1;
@@ -222,7 +222,7 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 		ptStartStruct.IpFiltering.Ranges[0].lpStartVa = (LPVOID)((ULONG_PTR)remoteModInfo.lpBaseOfDll);
 		ptStartStruct.IpFiltering.Ranges[0].lpEndVa = (LPVOID)((ULONG_PTR)remoteModInfo.lpBaseOfDll + remoteModInfo.SizeOfImage);
 		ptStartStruct.IpFiltering.Ranges[0].bStopTrace = FALSE;
-	}		// END Tracing by IP block
+	}   // END Tracing by IP block
 
 	// Write some information in the output text file:
 	WriteCpuTextDumpsHeader(wsExecutableFullPath.c_str(), (ULONG_PTR)remoteModInfo.lpBaseOfDll, remoteModInfo.SizeOfImage);
@@ -598,7 +598,7 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
 	
     PT_CPU_BUFFER_DESC * pCurrentCpuBufferDesc = &g_appData.pCpuBufferDescArray[dwCpuId];
     QWORD & qwDelta = pCurrentCpuBufferDesc->qwDelta;
-    KAFFINITY thisCpuAffinity = (1i64 << dwCpuId);
+    KAFFINITY currentCpuAffinity = (1i64 << dwCpuId);
 
 	Xtrace(L"[PtControlApp] Executing PMI callback");
 
@@ -622,7 +622,7 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
 	RtlZeroMemory((LPBYTE)lpBuffer, (DWORD)qwBufferSize);
 
 	// Resume the tracing and the execution of the target process
-	bReturn = DeviceIoControl(g_appData.hPtDevice, IOCTL_PTDRV_RESUME_TRACE, (LPVOID)&thisCpuAffinity, sizeof(KAFFINITY), NULL, 0, &dwBytesIo, NULL);
+	bReturn = DeviceIoControl(g_appData.hPtDevice, IOCTL_PTDRV_RESUME_TRACE, (LPVOID)&currentCpuAffinity, sizeof(KAFFINITY), NULL, 0, &dwBytesIo, NULL);
 	
 	if (!g_appData.currentTrace.bTraceKernel)
 		ZwResumeProcess(g_appData.hTargetProcess);

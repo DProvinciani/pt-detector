@@ -11,6 +11,7 @@
 #pragma once
 #include <iostream>
 #include "IntelPt.h"
+#include "pt_dump.h"
 #include "..\WindowsPtDriver\DriverIo.h"
 
 #define DEFAULT_TRACE_BUFF_SIZE 128 * 1024	// Default TRACE buffer size

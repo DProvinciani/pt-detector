@@ -671,15 +671,16 @@ VOID IoCpuIpiDpc(struct _KDPC *Dpc, PVOID DeferredContext, PVOID SysArg1, PVOID 
 			ptDesc.bTraceUser = ptTraceUserStruct->bTraceUser;
 			ptDesc.bTraceKernel = ptTraceUserStruct->bTraceKernel;
 			if (!ptDesc.bTraceKernel && !ptDesc.bTraceUser) ptDesc.bTraceUser = 1;
-			#endif		
+			#endif
 
-			ptDesc.peProc = pTargetProc;
+            ptDesc.peProc = pTargetProc;
 			ptDesc.dwNumOfRanges = ptTraceUserStruct->IpFiltering.dwNumOfRanges;
 			if (ptDesc.dwNumOfRanges)
 				RtlCopyMemory(ptDesc.Ranges, ptTraceUserStruct->IpFiltering.Ranges, sizeof(PT_TRACE_RANGE) * 4); // should be ptDesc.dwNumOfRanges
 
 			// user input validated in DriverIo dispatch function
-			ntStatus = StartCpuTrace(ptDesc, (QWORD)ptTraceUserStruct->dwTraceSize);
+            ntStatus = StartCpuTrace(ptDesc, (QWORD)ptTraceUserStruct->dwTraceSize);
+
 			break;
 		}
 		case DPC_TYPE_PAUSE_PT: {

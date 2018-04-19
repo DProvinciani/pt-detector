@@ -213,15 +213,15 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 			return -1;
 		}
 
-		cl_wprintf(PINK, L"\r\n        Using IP filtering mode!\r\n");
+		cl_wprintf(PINK, L"\r\n        Using CR3 filtering mode!\r\n");
 		wprintf(L"        New Process main module base address: 0x%llX, size 0x%08X.\r\n\r\n",
 			(QWORD)remoteModInfo.lpBaseOfDll, remoteModInfo.SizeOfImage);
 
 		// Set the PT_USER_REQUEST structure
-		ptStartStruct.IpFiltering.dwNumOfRanges = 1;
-		ptStartStruct.IpFiltering.Ranges[0].lpStartVa = (LPVOID)((ULONG_PTR)remoteModInfo.lpBaseOfDll);
+		ptStartStruct.IpFiltering.dwNumOfRanges = 0;
+		/*ptStartStruct.IpFiltering.Ranges[0].lpStartVa = (LPVOID)((ULONG_PTR)remoteModInfo.lpBaseOfDll);
 		ptStartStruct.IpFiltering.Ranges[0].lpEndVa = (LPVOID)((ULONG_PTR)remoteModInfo.lpBaseOfDll + remoteModInfo.SizeOfImage);
-		ptStartStruct.IpFiltering.Ranges[0].bStopTrace = FALSE;
+		ptStartStruct.IpFiltering.Ranges[0].bStopTrace = FALSE;*/
 	}   // END Tracing by IP block
 
 	// Write some information in the output text file:
@@ -229,7 +229,7 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 	ptStartStruct.bTraceUser = !bDoKernelTrace;
 	ptStartStruct.bTraceKernel = bDoKernelTrace;
 	// For now do not set the frequencies....
-	ptStartStruct.dwOptsMask = PT_TRACE_BRANCH_PCKS_MASK | PT_ENABLE_RET_COMPRESSION_MASK | PT_ENABLE_TOPA_MASK;
+	ptStartStruct.dwOptsMask = PT_TRACE_BRANCH_PCKS_MASK | PT_ENABLE_TOPA_MASK;
 	ptStartStruct.kCpuAffinity = cpuAffinity;
 	ptStartStruct.dwTraceSize = g_appData.dwTraceBuffSize;
 #pragma endregion
@@ -282,6 +282,38 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 	PT_TRACE_DETAILS ptDetails = { 0 };
 	
 	cl_wprintf(DARKYELLOW, L"    *** PT Trace results ***\r\n");
+
+    /*wprintf(L"        Number of packets in memory: %d\r\n", g_appData.packets.size());
+    TCHAR packetsFileName[MAX_PATH] = { 0 };
+    RtlZeroMemory(packetsFileName, MAX_PATH * sizeof(TCHAR));
+    swprintf_s(packetsFileName, MAX_PATH, L"%s\\packets.log", lpOutputDir);
+
+    HANDLE hPacketsFile = CreateFile(packetsFileName, FILE_GENERIC_WRITE | DELETE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
+
+    if (hPacketsFile != INVALID_HANDLE_VALUE) {
+        for (unsigned i = 0; i < g_appData.packets.size(); i++) {
+            CHAR fullLine[0x200] = { 0 };
+
+            if (g_appData.packets[i].type == pt_packet_type::ppt_fup)
+                sprintf_s(fullLine, COUNTOF(fullLine), "FUP ");
+            if (g_appData.packets[i].type == pt_packet_type::ppt_mode)
+                sprintf_s(fullLine, COUNTOF(fullLine), "MODE ");
+            if (g_appData.packets[i].type == pt_packet_type::ppt_tip)
+                sprintf_s(fullLine, COUNTOF(fullLine), "TIP ");
+            if (g_appData.packets[i].type == pt_packet_type::ppt_tip_pgd)
+                sprintf_s(fullLine, COUNTOF(fullLine), "TIP_PGD ");
+            if (g_appData.packets[i].type == pt_packet_type::ppt_tip_pge)
+                sprintf_s(fullLine, COUNTOF(fullLine), "TiP_PGE ");
+            if (g_appData.packets[i].type == pt_packet_type::ppt_tnt_64)
+                sprintf_s(fullLine, COUNTOF(fullLine), "TNT64 ");
+            if (g_appData.packets[i].type == pt_packet_type::ppt_tnt_8)
+                sprintf_s(fullLine, COUNTOF(fullLine), "TNT8 ");
+
+            WriteFile(hPacketsFile, fullLine, (DWORD)strlen(fullLine), &dwBytesIo, NULL);
+        }
+
+        CloseHandle(hPacketsFile);
+    }*/
 	
 	for (unsigned i = 0; i < dwCpusToUse; i++) {
 		RtlZeroMemory(&ptDetails, sizeof(ptDetails));
@@ -299,7 +331,7 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 	// Stop the Tracing (and clear the buffer if not manually allocated)
 	bReturn = DeviceIoControl(hPtDevice, IOCTL_PTDRV_CLEAR_TRACE, (LPVOID)&cpuAffinity, sizeof(cpuAffinity), NULL, 0, &dwBytesIo, NULL);
 
-	CloseHandle(processInfo.hProcess); 
+	CloseHandle(processInfo.hProcess);
 	CloseHandle(processInfo.hThread);
 	FreePerCpuData(bDeleteFiles);
 	if (bManuallyAllocBuff)
@@ -534,7 +566,7 @@ DWORD WINAPI PmiThreadProc(LPVOID lpParameter) {
     DWORD dwCpuNumber = (DWORD)(QWORD)lpParameter;
 	PT_CPU_BUFFER_DESC * pCurrentCpuBufferDesc = &g_appData.pCpuBufferDescArray[dwCpuNumber];
 
-	Xtrace(L"[PtControlApp] Executing PMI interrupt");
+	//Xtrace(L"[PtControlApp] Executing PMI interrupt");
 
     hKernelEvent = OpenEvent(SYNCHRONIZE, FALSE, lpEventName);
 
@@ -583,8 +615,12 @@ DWORD WINAPI PmiThreadProc(LPVOID lpParameter) {
 		bReturn = WriteFile(pCurrentCpuBufferDesc->hBinFile, pCurrentCpuBufferDesc->lpPtBuff, dwEndOffset, &dwBytesIo, NULL);
 		if (pCurrentCpuBufferDesc->hTextFile) {
 			// Dump the text trace file immediately
-			bReturn = pt_dumpW(pCurrentCpuBufferDesc->lpPtBuff, dwEndOffset, pCurrentCpuBufferDesc->hTextFile, pCurrentCpuBufferDesc->qwDelta, g_appData.bTraceOnlyKernel);
+            VPACKETS packets;
+            QWORD & qwDelta = pCurrentCpuBufferDesc->qwDelta;
+			bReturn = pt_dump_packets(pCurrentCpuBufferDesc->lpPtBuff, dwEndOffset, pCurrentCpuBufferDesc->hTextFile, qwDelta, &packets);
 			pCurrentCpuBufferDesc->qwDelta += (QWORD)dwEndOffset;
+
+            //Xtrace(L"[PtControlApp] Executing PMI interrupt. Chains detected: %d", packets.size());
 		}
 	}
 
@@ -600,7 +636,7 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
     QWORD & qwDelta = pCurrentCpuBufferDesc->qwDelta;
     KAFFINITY currentCpuAffinity = (1i64 << dwCpuId);
 
-	Xtrace(L"[PtControlApp] Executing PMI callback");
+	//Xtrace(L"[PtControlApp] Executing PMI callback");
 
 	// Check if there is the main thread, open if so
 	if (g_appData.dwMainThreadId && !g_appData.hMainThread)
@@ -614,8 +650,11 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
 		
 		if (pCurrentCpuBufferDesc->hTextFile) {
             // Dump the text trace file immediately
-            bReturn = pt_dumpW((LPBYTE)lpBuffer, (DWORD)qwBufferSize, pCurrentCpuBufferDesc->hTextFile, qwDelta, g_appData.bTraceOnlyKernel);
+            VPACKETS packets;
+            bReturn = pt_dump_packets((LPBYTE)lpBuffer, (DWORD)qwBufferSize, pCurrentCpuBufferDesc->hTextFile, qwDelta, &packets);
             qwDelta += (QWORD)qwBufferSize;
+            
+            //Xtrace(L"[PtControlApp] Executing PMI callback. Chains detected: %d", packets.size());
         }
 	}
 

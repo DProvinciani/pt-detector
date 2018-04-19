@@ -46,247 +46,14 @@
 
 ptdump_global g_pt_data;
 
-static int usage(const char *name)
-{
-	fprintf(stderr,
-		"%s: [<options>] <ptfile>.  Use --help or -h for help.\n",
-		name);
-	return -1;
-}
-
-static int no_file_error(const char *name)
-{
-	fprintf(stderr, "%s: No processor trace file specified.\n", name);
-	return -1;
-}
-
-static int unknown_option_error(const char *arg, const char *name)
-{
-	fprintf(stderr, "%s: unknown option: %s.\n", name, arg);
-	return -1;
-}
-
-static int help(const char *name)
-{
-	fprintf(stderr,
-		"usage: %s [<options>] <ptfile>[:<from>[-<to>]\n\n"
-		"options:\n"
-		"  --help|-h                 this text.\n"
-		"  --version                 display version information and exit.\n"
-		"  --no-sync                 don't try to sync to the first PSB, assume a valid\n"
-		"                            sync point at the beginning of the trace.\n"
-		"  --quiet                   don't print anything but errors.\n"
-		"  --no-pad                  don't show PAD packets.\n"
-		"  --no-timing               don't show timing packets.\n"
-		"  --no-cyc                  don't show CYC packets and ignore them when tracking time.\n"
-		"  --no-offset               don't show the offset as the first column.\n"
-		"  --raw                     show raw packet bytes.\n"
-		"  --lastip                  show last IP updates on packets with IP payloads.\n"
-		"  --exec-mode               show the current execution mode on mode.exec packets.\n"
-		"  --time                    show the estimated TSC on timing packets.\n"
-		"  --tcal                    show time calibration information.\n"
-		"  --time-delta              show timing information as delta.\n"
-		"  --no-tcal                 skip timing calibration.\n"
-		"                            this will result in errors when CYC packets are encountered.\n"
-		"  --no-wall-clock           suppress the no-time error and print relative time.\n"
-		"  --cpu none|auto|f/m[/s]   set cpu to the given value and decode according to:\n"
-		"                              none     spec (default)\n"
-		"                              auto     current cpu\n"
-		"                              f/m[/s]  family/model[/stepping]\n"
-		"  --mtc-freq <n>            set the MTC frequency (IA32_RTIT_CTL[17:14]) to <n>.\n"
-		"  --nom-freq <n>            set the nominal frequency (MSR_PLATFORM_INFO[15:8]) to <n>.\n"
-		"  --cpuid-0x15.eax          set the value of cpuid[0x15].eax.\n"
-		"  --cpuid-0x15.ebx          set the value of cpuid[0x15].ebx.\n"
-		"  <ptfile>[:<from>[-<to>]]  load the processor trace data from <ptfile>;\n"
-		"                            an optional offset or range can be given.\n",
-		name);
-
-	return 0;
-}
-
-static int version(const char *name)
-{
-	struct pt_version v = pt_library_version();
-
-	printf("%s-%d.%d.%d%s / libipt-%" PRIu8 ".%" PRIu8 ".%" PRIu32 "%s\n",
-	       name, PT_VERSION_MAJOR, PT_VERSION_MINOR, PT_VERSION_BUILD,
-	       PT_VERSION_EXT, v.major, v.minor, v.build, v.ext);
-	return 0;
-}
-
-static int parse_range(const char *arg, uint64_t *begin, uint64_t *end)
-{
-	char *rest;
-
-	if (!arg || !*arg)
-		return 0;
-
-	errno = 0;
-	*begin = strtoull(arg, &rest, 0);
-	if (errno)
-		return -1;
-
-	if (!*rest)
-		return 1;
-
-	if (*rest != '-')
-		return -1;
-
-	*end = strtoull(rest+1, &rest, 0);
-	if (errno || *rest)
-		return -1;
-
-	return 2;
-}
-
-// Load the PT binary file:
-static int load_file(uint8_t **buffer, size_t *size, char *arg,
-		     const char *prog)
-{
-	uint64_t begin_arg, end_arg;
-	uint8_t *content;
-	HANDLE hFile = NULL;
-	HANDLE hSection = NULL;
-	long fsize, begin, end;
-	int range_parts;
-	char *range;
-
-	if (!buffer || !size || !arg || !prog) {
-		fprintf(stderr, "%s: internal error.\n", prog ? prog : "");
-		return -1;
-	}
-
-	range_parts = 0;
-	begin_arg = 0ull;
-	end_arg = UINT64_MAX;
-
-	range = strrchr(arg, ':');
-	if (range) {
-		/* Let's try to parse an optional range suffix.
-		 *
-		 * If we can, remove it from the filename argument.
-		 * If we can not, assume that the ':' is part of the filename,
-		 * e.g. a drive letter on Windows.
-		 */
-		range_parts = parse_range(range + 1, &begin_arg, &end_arg);
-		if (range_parts <= 0) {
-			begin_arg = 0ull;
-			end_arg = UINT64_MAX;
-
-			range_parts = 0;
-		} else
-			*range = 0;
-	}
-
-	errno = 0;
-	hFile = CreateFileA(arg, FILE_GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-	//fopen_s(&file, arg, "rb");
-	if (hFile == INVALID_HANDLE_VALUE) {
-		fprintf(stderr, "%s: failed to open %s: %d.\n",
-			prog, arg, errno);
-		return -1;
-	}
-
-	fsize = SetFilePointer(hFile, 0, 0, FILE_END);
-	if (fsize < 0) {
-		fprintf(stderr, "%s: failed to determine size of %s: %d.\n",
-			prog, arg, errno);
-		goto err_file;
-	}
-
-	/* Truncate the range to fit into the file unless an explicit range end
-	 * was provided.
-	 */
-	if (range_parts < 2)
-		end_arg = (uint64_t) fsize;
-
-	begin = (long) begin_arg;
-	end = (long) end_arg;
-	if ((uint64_t) begin != begin_arg || (uint64_t) end != end_arg) {
-		fprintf(stderr, "%s: invalid offset/range argument.\n", prog);
-		goto err_file;
-	}
-
-	if (fsize <= begin) {
-		fprintf(stderr, "%s: offset 0x%lx outside of %s.\n",
-			prog, begin, arg);
-		goto err_file;
-	}
-
-	if (fsize < end) {
-		fprintf(stderr, "%s: range 0x%lx outside of %s.\n",
-			prog, end, arg);
-		goto err_file;
-	}
-
-	if (end <= begin) {
-		fprintf(stderr, "%s: bad range.\n", prog);
-		goto err_file;
-	}
-
-	fsize = end - begin;
-	SetFilePointer(hFile, begin, 0, FILE_BEGIN);
-
-	// Use memory mapped file
-	hSection = CreateFileMapping((HANDLE)hFile, NULL, PAGE_READONLY, NULL, NULL, NULL);
-	content = (uint8_t*)MapViewOfFile(hSection, FILE_MAP_READ, 0, 0, fsize);
-	if (!content) {
-		fprintf(stderr, "%s: failed to map the input file %s.\n",
-			prog, arg);
-		goto err_file;
-	}
-
-	__try {
-		BYTE test = content[0];
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER) {
-		UnmapViewOfFile((LPCVOID)content);
-		goto err_file;
-	}
-
-	*buffer = content;
-	*size = fsize;
-
-	// Update global data on success
-	g_pt_data.hInFile = hFile;
-	g_pt_data.hInSection = hSection;
-	g_pt_data.lpFileContent = (LPCVOID)content;
-
-	return 0;
-
-err_file:
-	if (hSection) CloseHandle(hSection);
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-	return -1;
-}
-
-// Unload and free the resource of the current loaded input file
-static int unload_file() {
-	if (g_pt_data.lpFileContent)
-		UnmapViewOfFile(g_pt_data.lpFileContent);
-	if (g_pt_data.hInSection)
-		CloseHandle(g_pt_data.hInSection);
-	if (g_pt_data.hInFile)
-		CloseHandle(g_pt_data.hInFile);
-	return 0;
-}
-
-
-// Load the binary PT file 
-static int load_pt(struct pt_config *config, char *arg, const char *prog)
-{
-	uint8_t *buffer;
-	size_t size;
-	int errcode;
-
-	errcode = load_file(&buffer, &size, arg, prog);
-	if (errcode < 0)
-		return errcode;
-
-	config->begin = buffer;
-	config->end = buffer + size;
-
-	return 0;
+static inline void Xtrace(LPCTSTR lpszFormat, ...) {
+    va_list args;
+    va_start(args, lpszFormat);
+    int nBuf;
+    TCHAR szBuffer[2048] = { 0 }; //fix this
+    nBuf = _vsnwprintf_s(szBuffer, 2047, lpszFormat, args);
+    ::OutputDebugString(szBuffer);
+    va_end(args);
 }
 
 static int diag(const char *errstr, uint64_t offset, int errcode)
@@ -1080,387 +847,379 @@ static int print_packet(struct ptdump_buffer *buffer, uint64_t offset,
 }
 
 static int dump_one_packet(uint64_t offset, const struct pt_packet *packet,
-			   struct ptdump_tracking *tracking,
-			   const struct ptdump_options *options,
-			   const struct pt_config *config)
+    struct ptdump_tracking *tracking,
+    const struct ptdump_options *options,
+    const struct pt_config *config,
+    VPACKETS* packets)
 {
-	struct ptdump_buffer buffer;
-	int errcode;
+    struct ptdump_buffer buffer = { 0 };
+    int errcode = 0;
 
-	memset(&buffer, 0, sizeof(buffer));
+    if (packets != NULL) {
+        //packets->push_back(*packet);
+    }
+    else
+    {
+        memset(&buffer, 0, sizeof(buffer));
 
-	print_field(buffer.offset, "0x%08" PRIx32, (DWORD)(offset + options->offset_delta));
+        print_field(buffer.offset, "0x%08" PRIx32, (DWORD)(offset + options->offset_delta));
 
-	if (options->show_raw_bytes) {
-		errcode = print_raw(&buffer, offset, packet, config);
-		if (errcode < 0)
-			return errcode;
-	}
+        if (options->show_raw_bytes) {
+            errcode = print_raw(&buffer, offset, packet, config);
+            if (errcode < 0)
+                return errcode;
+        }
 
-	errcode = print_packet(&buffer, offset, packet, tracking, options,
-			       config);
-	if (errcode < 0)
-		return errcode;
+        errcode = print_packet(&buffer, offset, packet, tracking, options, config);
 
-	return print_buffer(&buffer, offset, options);
+        if (errcode < 0)
+            return errcode;
+        else
+            errcode = print_buffer(&buffer, offset, options);
+    }
+
+    return errcode;
 }
 
 static int dump_packets(struct pt_packet_decoder *decoder,
-			struct ptdump_tracking *tracking,
-			const struct ptdump_options *options,
-			const struct pt_config *config)
+    struct ptdump_tracking *tracking,
+    const struct ptdump_options *options,
+    const struct pt_config *config,
+    VPACKETS* packets)
 {
-	uint64_t offset;
-	int errcode;
+    uint64_t offset = 0ull;
+    int errcode = 0;
 
-	offset = 0ull;
-	for (;;) {
-		struct pt_packet packet;
+    for (;;) {
+        struct pt_packet packet;
 
-		errcode = pt_pkt_get_offset(decoder, &offset);
-		if (errcode < 0)
-			return diag("error getting offset", offset, errcode);
+        errcode = pt_pkt_get_offset(decoder, &offset);
+        if (errcode < 0)
+            return diag("error getting offset", offset, errcode);
 
-		errcode = pt_pkt_next(decoder, &packet, sizeof(packet));
-		if (errcode < 0) {
-			if (errcode == -pte_eos)
-				return 0;
+        errcode = pt_pkt_next(decoder, &packet, sizeof(packet));
+        if (errcode < 0) {
+            if (errcode == -pte_eos)
+                return 0;
 
-			// Return the error code and restart the scan
-			if (pt_errcode(errcode) != pte_bad_packet)
-				return diag("error decoding packet", offset, errcode);
-			else
-				return errcode;
-		}
+            // Return the error code and restart the scan
+            if (pt_errcode(errcode) != pte_bad_packet)
+                return diag("error decoding packet", offset, errcode);
+            else
+                return errcode;
+        }
 
-		errcode = dump_one_packet(offset, &packet, tracking, options,
-					  config);
-		if (errcode < 0)
-			return diag("error printing the packet", offset, errcode);
-	}
-	return 0;
+        errcode = dump_one_packet(offset, &packet, tracking, options, config, packets);
+
+        if (errcode < 0)
+            return diag("error printing the packet", offset, errcode);
+    }
+    return 0;
 }
 
 static int dump_sync(struct pt_packet_decoder *decoder,
-		     struct ptdump_tracking *tracking,
-		     const struct ptdump_options *options,
-		     const struct pt_config *config)
+    struct ptdump_tracking *tracking,
+    const struct ptdump_options *options,
+    const struct pt_config *config,
+    VPACKETS* packets)
 {
-	int errcode;
+    int errcode;
 
-	if (!options)
-		return diag("setup error", 0ull, -pte_internal);
+    if (!options)
+        return diag("setup error", 0ull, -pte_internal);
 
-	if (options->no_sync) {
-		errcode = pt_pkt_sync_set(decoder, 0ull);
-		if (errcode < 0)
-			return diag("sync error", 0ull, errcode);
-	} else {
-		errcode = pt_pkt_sync_forward(decoder);
-		if (errcode < 0)
-			return diag("sync error", 0ull, errcode);
-	}
+    if (options->no_sync) {
+        errcode = pt_pkt_sync_set(decoder, 0ull);
+        if (errcode < 0)
+            return diag("sync error", 0ull, errcode);
+    }
+    else {
+        errcode = pt_pkt_sync_forward(decoder);
+        if (errcode < 0)
+            return diag("sync error", 0ull, errcode);
+    }
 
-	for (;;) {
-		errcode = dump_packets(decoder, tracking, options, config);
-		if (!errcode)
-			break;
+    for (;;) {
+        errcode = dump_packets(decoder, tracking, options, config, packets);
+        if (!errcode)
+            break;
 
-		errcode = pt_pkt_sync_forward(decoder);
-		if (errcode < 0)
-			return diag("sync error", 0ull, errcode);
+        errcode = pt_pkt_sync_forward(decoder);
+        if (errcode < 0)
+            return diag("sync error", 0ull, errcode);
 
-		ptdump_tracking_reset(tracking);
-	}
+        ptdump_tracking_reset(tracking);
+    }
 
-	return errcode;
+    return errcode;
 }
 
 // Dump all the PT packets
 static int pt_dump(const struct pt_config *config,
-		const struct ptdump_options *options)
+    const struct ptdump_options *options,
+    VPACKETS* packets)
 {
-	struct pt_packet_decoder *decoder;
-	struct ptdump_tracking tracking;
-	int errcode;
+    struct pt_packet_decoder *decoder;
+    struct ptdump_tracking tracking;
+    int errcode;
 
-	decoder = pt_pkt_alloc_decoder(config);
-	if (!decoder)
-		return diag("failed to allocate decoder", 0ull, 0);
+    decoder = pt_pkt_alloc_decoder(config);
+    if (!decoder)
+        return diag("failed to allocate decoder", 0ull, 0);
 
-	ptdump_tracking_init(&tracking);
+    ptdump_tracking_init(&tracking);
 
-	errcode = dump_sync(decoder, &tracking, options, config);
+    errcode = dump_sync(decoder, &tracking, options, config, packets);
 
-	ptdump_tracking_fini(&tracking);
-	pt_pkt_free_decoder(decoder);
+    ptdump_tracking_fini(&tracking);
+    pt_pkt_free_decoder(decoder);
+    return errcode;
+}
+
+int pt_dump_config(LPBYTE lpBuff, DWORD dwBuffSize, HANDLE hOutFile, ptdump_options* options, pt_config* config, QWORD qwDelta) {
+    int errcode = 0;
+    
+    config->size = sizeof(pt_config);
+	config->begin = lpBuff;
+	config->end = lpBuff + dwBuffSize;
+
+	options->no_sync = 1;
+	options->no_pad = 1;
+	options->no_timing = 1;
+	options->show_offset = 0;
+	options->show_time_as_delta = 0;
+	options->no_pge_pgd = 0;
+	options->no_pip = 0;
+	options->offset_delta = qwDelta;
+	if (hOutFile)
+		options->hTargetFile = hOutFile;
+
+	errcode = pt_cpu_errata(&config->errata, &config->cpu);
+	if (errcode < 0)
+		wprintf(L"failed to determine errata (error %i)", errcode);
+	
 	return errcode;
 }
 
-BOOL pt_dump_file(LPTSTR lpInputFile, LPTSTR lpOutFile, DWORD dwMaxSize) {
-	// ... Dump all the useful packets:
-	HANDLE hTarget = NULL;
-	CHAR binaryFileAStr[MAX_PATH] = { 0 };
-	CHAR myPath[MAX_PATH] = { 0 };
-	pt_config config = { 0 };
-	BOOL bRetVal = FALSE;
-	if (!lpInputFile) return FALSE;
-
-	sprintf_s((char* const)binaryFileAStr, MAX_PATH, "%S", lpInputFile);
-	GetModuleFileNameA(GetModuleHandle(NULL), myPath, MAX_PATH);
-
-	int errcode = load_pt(&config, binaryFileAStr, myPath);
-	if (errcode < 0) return FALSE;
-
-	if (lpOutFile) {
-		// Open target file
-		hTarget = CreateFile(lpOutFile, FILE_GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (hTarget == INVALID_HANDLE_VALUE)
-			return FALSE;
-		else
-			// Move to the end of file
-			SetFilePointer(hTarget, 0, 0, FILE_END);
-	}
-
-	if (dwMaxSize == 0) dwMaxSize = (DWORD)(config.end - config.begin);
-	bRetVal = pt_dumpW(config.begin, dwMaxSize, hTarget);
-
-	unload_file();
-	return bRetVal;
-}
-
-BOOL pt_dumpW(LPBYTE lpBuff, DWORD dwBuffSize, HANDLE hOutFile, QWORD delta, BOOLEAN bTraceOnlyKernel) {
-	ptdump_options options = { 0 };
-	pt_config config = { 0 };
-
-	config.size = sizeof(pt_config);
-	config.begin = lpBuff;
-	config.end = lpBuff + dwBuffSize;
-
-	options.no_sync = 1;
-	options.no_pad = 1;
-	options.no_timing = 1;
-	options.show_offset = 1;
-	options.show_time_as_delta = 1;
-	options.no_pge_pgd = 0;
-	options.no_pip = (bTraceOnlyKernel != FALSE) ? 1 : 0;
-	options.offset_delta = delta;
-	if (hOutFile)
-		options.hTargetFile = hOutFile;
-
-	int errcode = pt_cpu_errata(&config.errata, &config.cpu);
-	if (errcode < 0)
-		wprintf(L"failed to determine errata (error %i)", errcode);
-	errcode = pt_dump(&config, &options);
-	return (errcode == 0);
-}
-
-static int get_arg_uint64(uint64_t *value, const char *option, const char *arg,
-			  const char *prog)
+static int parse_range(const char *arg, uint64_t *begin, uint64_t *end)
 {
-	char *rest;
+    char *rest;
 
-	if (!value || !option || !prog) {
-		fprintf(stderr, "%s: internal error.\n", prog ? prog : "?");
-		return 0;
-	}
+    if (!arg || !*arg)
+        return 0;
 
-	if (!arg || (arg[0] == '-' && arg[1] == '-')) {
-		fprintf(stderr, "%s: %s: missing argument.\n", prog, option);
-		return 0;
-	}
+    errno = 0;
+    *begin = strtoull(arg, &rest, 0);
+    if (errno)
+        return -1;
 
-	errno = 0;
-	*value = strtoull(arg, &rest, 0);
-	if (errno || *rest) {
-		fprintf(stderr, "%s: %s: bad argument: %s.\n", prog, option,
-			arg);
-		return 0;
-	}
+    if (!*rest)
+        return 1;
 
-	return 1;
+    if (*rest != '-')
+        return -1;
+
+    *end = strtoull(rest + 1, &rest, 0);
+    if (errno || *rest)
+        return -1;
+
+    return 2;
 }
 
-static int get_arg_uint32(uint32_t *value, const char *option, const char *arg,
-			  const char *prog)
+// Load the PT binary file:
+static int load_file(uint8_t **buffer, size_t *size, char *arg, const char *prog)
 {
-	uint64_t val;
+    uint64_t begin_arg, end_arg;
+    uint8_t *content;
+    HANDLE hFile = NULL;
+    HANDLE hSection = NULL;
+    long fsize, begin, end;
+    int range_parts;
+    char *range;
 
-	if (!get_arg_uint64(&val, option, arg, prog))
-		return 0;
+    if (!buffer || !size || !arg || !prog) {
+        fprintf(stderr, "%s: internal error.\n", prog ? prog : "");
+        return -1;
+    }
 
-	if (val > UINT32_MAX) {
-		fprintf(stderr, "%s: %s: value too big: %s.\n", prog, option,
-			arg);
-		return 0;
-	}
+    range_parts = 0;
+    begin_arg = 0ull;
+    end_arg = UINT64_MAX;
 
-	*value = (uint32_t) val;
+    range = strrchr(arg, ':');
+    if (range) {
+        /* Let's try to parse an optional range suffix.
+        *
+        * If we can, remove it from the filename argument.
+        * If we can not, assume that the ':' is part of the filename,
+        * e.g. a drive letter on Windows.
+        */
+        range_parts = parse_range(range + 1, &begin_arg, &end_arg);
+        if (range_parts <= 0) {
+            begin_arg = 0ull;
+            end_arg = UINT64_MAX;
 
-	return 1;
+            range_parts = 0;
+        }
+        else
+            *range = 0;
+    }
+
+    errno = 0;
+    hFile = CreateFileA(arg, FILE_GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    //fopen_s(&file, arg, "rb");
+    if (hFile == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "%s: failed to open %s: %d.\n", prog, arg, errno);
+        return -1;
+    }
+
+    fsize = SetFilePointer(hFile, 0, 0, FILE_END);
+    if (fsize < 0) {
+        fprintf(stderr, "%s: failed to determine size of %s: %d.\n", prog, arg, errno);
+        goto err_file;
+    }
+
+    /* Truncate the range to fit into the file unless an explicit range end
+    * was provided.
+    */
+    if (range_parts < 2)
+        end_arg = (uint64_t)fsize;
+
+    begin = (long)begin_arg;
+    end = (long)end_arg;
+    if ((uint64_t)begin != begin_arg || (uint64_t)end != end_arg) {
+        fprintf(stderr, "%s: invalid offset/range argument.\n", prog);
+        goto err_file;
+    }
+
+    if (fsize <= begin) {
+        fprintf(stderr, "%s: offset 0x%lx outside of %s.\n", prog, begin, arg);
+        goto err_file;
+    }
+
+    if (fsize < end) {
+        fprintf(stderr, "%s: range 0x%lx outside of %s.\n", prog, end, arg);
+        goto err_file;
+    }
+
+    if (end <= begin) {
+        fprintf(stderr, "%s: bad range.\n", prog);
+        goto err_file;
+    }
+
+    fsize = end - begin;
+    SetFilePointer(hFile, begin, 0, FILE_BEGIN);
+
+    // Use memory mapped file
+    hSection = CreateFileMapping((HANDLE)hFile, NULL, PAGE_READONLY, NULL, NULL, NULL);
+    content = (uint8_t*)MapViewOfFile(hSection, FILE_MAP_READ, 0, 0, fsize);
+    if (!content) {
+        fprintf(stderr, "%s: failed to map the input file %s.\n", prog, arg);
+        goto err_file;
+    }
+
+    __try {
+        BYTE test = content[0];
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        UnmapViewOfFile((LPCVOID)content);
+        goto err_file;
+    }
+
+    *buffer = content;
+    *size = fsize;
+
+    // Update global data on success
+    g_pt_data.hInFile = hFile;
+    g_pt_data.hInSection = hSection;
+    g_pt_data.lpFileContent = (LPCVOID)content;
+
+    return 0;
+
+err_file:
+    if (hSection) CloseHandle(hSection);
+    if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
+    return -1;
 }
 
-static int get_arg_uint8(uint8_t *value, const char *option, const char *arg,
-			 const char *prog)
-{
-	uint64_t val;
-
-	if (!get_arg_uint64(&val, option, arg, prog))
-		return 0;
-
-	if (val > UINT8_MAX) {
-		fprintf(stderr, "%s: %s: value too big: %s.\n", prog, option,
-			arg);
-		return 0;
-	}
-
-	*value = (uint8_t) val;
-
-	return 1;
+// Unload and free the resource of the current loaded input file
+static int unload_file() {
+    if (g_pt_data.lpFileContent)
+        UnmapViewOfFile(g_pt_data.lpFileContent);
+    if (g_pt_data.hInSection)
+        CloseHandle(g_pt_data.hInSection);
+    if (g_pt_data.hInFile)
+        CloseHandle(g_pt_data.hInFile);
+    return 0;
 }
 
-int ptdump_main(int argc, char *argv[])
+// Load the binary PT file 
+static int load_pt(struct pt_config *config, char *arg, const char *prog)
 {
-	struct ptdump_options options;
-	struct pt_config config;
-	int errcode, idx;
-	char *ptfile;
+    uint8_t *buffer;
+    size_t size;
+    int errcode;
 
-	ptfile = NULL;
+    errcode = load_file(&buffer, &size, arg, prog);
+    if (errcode < 0)
+        return errcode;
 
-	memset(&options, 0, sizeof(options));
-	options.show_offset = 1;
+    config->begin = buffer;
+    config->end = buffer + size;
 
-	memset(&config, 0, sizeof(config));
-	pt_config_init(&config);
+    return 0;
+}
 
-	for (idx = 1; idx < argc; ++idx) {
-		if (strncmp(argv[idx], "-", 1) != 0) {
-			ptfile = argv[idx];
-			if (idx < (argc-1))
-				return usage(argv[0]);
-			break;
-		}
+BOOL pt_dump_packets(LPBYTE lpBuff, DWORD dwBuffSize, HANDLE hOutFile, QWORD qwDelta, VPACKETS* packets) {
+    int errcode = 0;
+    ptdump_options options = { 0 };
+    pt_config config = { 0 };
 
-		if (strcmp(argv[idx], "-h") == 0)
-			return help(argv[0]);
-		if (strcmp(argv[idx], "--help") == 0)
-			return help(argv[0]);
-		if (strcmp(argv[idx], "--version") == 0)
-			return version(argv[0]);
-		if (strcmp(argv[idx], "--no-sync") == 0)
-			options.no_sync = 1;
-		else if (strcmp(argv[idx], "--quiet") == 0)
-			options.quiet = 1;
-		else if (strcmp(argv[idx], "--no-pad") == 0)
-			options.no_pad = 1;
-		else if (strcmp(argv[idx], "--no-timing") == 0)
-			options.no_timing = 1;
-		else if (strcmp(argv[idx], "--no-cyc") == 0)
-			options.no_cyc = 1;
-		else if (strcmp(argv[idx], "--no-offset") == 0)
-			options.show_offset = 0;
-		else if (strcmp(argv[idx], "--raw") == 0)
-			options.show_raw_bytes = 1;
-		else if (strcmp(argv[idx], "--lastip") == 0)
-			options.show_last_ip = 1;
-		else if (strcmp(argv[idx], "--exec-mode") == 0)
-			options.show_exec_mode = 1;
-		else if (strcmp(argv[idx], "--time") == 0) {
-			if (options.show_tcal) {
-				fprintf(stderr, "%s: specify either --time "
-					"or --tcal.\n", argv[0]);
-				return 1;
-			}
+    errcode = pt_dump_config(lpBuff, dwBuffSize, hOutFile, &options, &config, qwDelta);
+    
+    if (errcode == 0)
+        errcode = pt_dump(&config, &options, packets);
+    
+    return (errcode == 0);
+}
 
-			options.track_time = 1;
-			options.show_time = 1;
-		} else if (strcmp(argv[idx], "--time-delta") == 0) {
-			options.show_time_as_delta = 1;
-		} else if (strcmp(argv[idx], "--tcal") == 0) {
-			if (options.show_time) {
-				fprintf(stderr, "%s: specify either --time "
-					"or --tcal.\n", argv[0]);
-				return 1;
-			}
+BOOL pt_dump_packets(LPCWSTR lpInputFile, DWORD dwMaxSize) {
+    HANDLE hTarget = NULL;
+    CHAR binaryFileAStr[MAX_PATH] = { 0 };
+    CHAR myPath[MAX_PATH] = { 0 };
+    ptdump_options options = { 0 };
+    pt_config config = { 0 };
+    int errcode = 0;
+    
+    if (!lpInputFile)
+        return FALSE;
 
-			options.track_time = 1;
-			options.show_tcal = 1;
-		} else if (strcmp(argv[idx], "--no-tcal") == 0)
-			options.no_tcal = 1;
-		else if (strcmp(argv[idx], "--no-wall-clock") == 0)
-			options.no_wall_clock = 1;
-		else if (strcmp(argv[idx], "--cpu") == 0) {
-			const char *arg;
+    sprintf_s((char* const)binaryFileAStr, MAX_PATH, "%S", lpInputFile);
+    GetModuleFileNameA(GetModuleHandle(NULL), myPath, MAX_PATH);
 
-			arg = argv[++idx];
-			if (!arg) {
-				fprintf(stderr,
-					"%s: --cpu: missing argument.\n",
-					argv[0]);
-				return 1;
-			}
+    errcode = load_pt(&config, binaryFileAStr, myPath);
+    if (errcode < 0)
+        return FALSE;
 
-			if (strcmp(arg, "auto") == 0) {
-				errcode = pt_cpu_read(&config.cpu);
-				if (errcode < 0) {
-					fprintf(stderr,
-						"%s: error reading cpu: %s.\n",
-						argv[0],
-						pt_errstr(pt_errcode(errcode)));
-					return 1;
-				}
-				continue;
-			}
+    std::wstring outFile = lpInputFile;
+    outFile.append(L".log");
 
-			if (strcmp(arg, "none") == 0) {
-				memset(&config.cpu, 0, sizeof(config.cpu));
-				continue;
-			}
+    if (!outFile.empty()) {
+        hTarget = CreateFile(outFile.c_str(), FILE_GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hTarget == INVALID_HANDLE_VALUE)
+            return FALSE;
+        else
+            SetFilePointer(hTarget, 0, 0, FILE_END);
+    }
 
-			errcode = pt_cpu_parse(&config.cpu, arg);
-			if (errcode < 0) {
-				fprintf(stderr,
-					"%s: cpu must be specified as f/m[/s]\n",
-					argv[0]);
-				return 1;
-			}
-		} else if (strcmp(argv[idx], "--mtc-freq") == 0) {
-			if (!get_arg_uint8(&config.mtc_freq, "--mtc-freq",
-					   argv[++idx], argv[0]))
-				return 1;
-		} else if (strcmp(argv[idx], "--nom-freq") == 0) {
-			if (!get_arg_uint8(&config.nom_freq, "--nom-freq",
-					   argv[++idx], argv[0]))
-				return 1;
-		} else if (strcmp(argv[idx], "--cpuid-0x15.eax") == 0) {
-			if (!get_arg_uint32(&config.cpuid_0x15_eax,
-					    "--cpuid-0x15.eax", argv[++idx],
-					    argv[0]))
-				return 1;
-		} else if (strcmp(argv[idx], "--cpuid-0x15.ebx") == 0) {
-			if (!get_arg_uint32(&config.cpuid_0x15_ebx,
-					    "--cpuid-0x15.ebx", argv[++idx],
-					    argv[0]))
-				return 1;
-		} else
-			return unknown_option_error(argv[idx], argv[0]);
-	}
+    if (dwMaxSize == 0)
+        dwMaxSize = (DWORD)(config.end - config.begin);
 
-	if (!ptfile)
-		return no_file_error(argv[0]);
+    errcode = pt_dump_config(config.begin, dwMaxSize, hTarget, &options, &config);
 
-	errcode = pt_cpu_errata(&config.errata, &config.cpu);
-	if (errcode < 0)
-		diag("failed to determine errata", 0ull, errcode);
+    if (errcode == 0)
+        errcode = pt_dump(&config, &options);
 
-	errcode = load_pt(&config, ptfile, argv[0]);
-	if (errcode < 0)
-		return errcode;
-
-	errcode = pt_dump(&config, &options);
-
-	free(config.begin);
-
-	return -errcode;
+    unload_file();
+    return (errcode == 0);
 }

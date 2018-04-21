@@ -855,28 +855,22 @@ static int dump_one_packet(uint64_t offset, const struct pt_packet *packet,
     struct ptdump_buffer buffer = { 0 };
     int errcode = 0;
 
-    if (packets != NULL) {
-        //packets->push_back(*packet);
-    }
-    else
-    {
-        memset(&buffer, 0, sizeof(buffer));
+    memset(&buffer, 0, sizeof(buffer));
 
-        print_field(buffer.offset, "0x%08" PRIx32, (DWORD)(offset + options->offset_delta));
+    print_field(buffer.offset, "0x%08" PRIx32, (DWORD)(offset + options->offset_delta));
 
-        if (options->show_raw_bytes) {
-            errcode = print_raw(&buffer, offset, packet, config);
-            if (errcode < 0)
-                return errcode;
-        }
-
-        errcode = print_packet(&buffer, offset, packet, tracking, options, config);
-
+    if (options->show_raw_bytes) {
+        errcode = print_raw(&buffer, offset, packet, config);
         if (errcode < 0)
             return errcode;
-        else
-            errcode = print_buffer(&buffer, offset, options);
     }
+
+    errcode = print_packet(&buffer, offset, packet, tracking, options, config);
+
+    if (errcode < 0)
+        return errcode;
+    else
+        errcode = print_buffer(&buffer, offset, options);
 
     return errcode;
 }
@@ -888,10 +882,15 @@ static int dump_packets(struct pt_packet_decoder *decoder,
     VPACKETS* packets)
 {
     uint64_t offset = 0ull;
-    int errcode = 0;
+    
+    unsigned status = 0;
+    unsigned FUPs = 0;
+    VPACKETS cadenas;
+    std::vector<uint64_t> offsets;
 
     for (;;) {
         struct pt_packet packet;
+        int errcode = 0;
 
         errcode = pt_pkt_get_offset(decoder, &offset);
         if (errcode < 0)
@@ -909,10 +908,100 @@ static int dump_packets(struct pt_packet_decoder *decoder,
                 return errcode;
         }
 
-        errcode = dump_one_packet(offset, &packet, tracking, options, config, packets);
+        if ((packets != NULL) &&
+            ((packet.type == pt_packet_type::ppt_tip)   ||
+             (packet.type == pt_packet_type::ppt_fup)   ||
+             (packet.type == pt_packet_type::ppt_tnt_8) ||
+             (packet.type == pt_packet_type::ppt_tnt_64)||
+             (packet.type == pt_packet_type::ppt_mode))) {
+            if (status == 0) {
+                if (packet.type == pt_packet_type::ppt_tip) {
+                    cadenas.push_back(packet);
+                    offsets.push_back(offset);
+                    status = 1;
+                }
+            }
+            else if (status == 1) {
+                if (packet.type == pt_packet_type::ppt_tip) {
+                    cadenas.push_back(packet);
+                    offsets.push_back(offset);
+                    status = 1;
+                }
+                else if (packet.type == pt_packet_type::ppt_fup) {
+                    cadenas.push_back(packet);
+                    offsets.push_back(offset);
+                    ++FUPs;
+                    status = 2;
+                }
+                else {
+                    cadenas.clear();
+                    offsets.clear();
+                    status = 0;
+                    FUPs = 0;
+                }
+            }
+            else if (status == 2) {
+                if (packet.type == pt_packet_type::ppt_tip) {
+                    cadenas.push_back(packet);
+                    offsets.push_back(offset);
+                    status = 3;
+                }
+                else {
+                    if ((FUPs > 2) || ((FUPs == 1) && (cadenas.size() > 9))) {
+                        std::string text = "\n\nChain size: ";
+                        text.append(std::to_string(cadenas.size()));
+                        text.append("\n");
+                        DWORD dwBytesIo = 0;
+                        WriteFile(options->hTargetFile, text.c_str(), text.length(), &dwBytesIo, NULL);
 
-        if (errcode < 0)
-            return diag("error printing the packet", offset, errcode);
+                        for (unsigned index = 0; index < cadenas.size(); ++index) {
+                            errcode = dump_one_packet(offsets[index], &cadenas[index], tracking, options, config, &cadenas);
+
+                            if (errcode < 0)
+                                return diag("error printing the packet", offset, errcode);
+                        }
+                    }
+                    cadenas.clear();
+                    offsets.clear();
+                    status = 0;
+                    FUPs = 0;
+                }
+            }
+            else if (status == 3) {
+                if (packet.type == pt_packet_type::ppt_fup) {
+                    cadenas.push_back(packet);
+                    offsets.push_back(offset);
+                    ++FUPs;
+                    status = 2;
+                }
+                else {
+                    if (FUPs > 2) {
+                        std::string text = "\n\nChain size: ";
+                        text.append(std::to_string(cadenas.size()));
+                        text.append("\n");
+                        DWORD dwBytesIo = 0;
+                        WriteFile(options->hTargetFile, text.c_str(), text.length(), &dwBytesIo, NULL);
+
+                        for (unsigned index = 0; index < cadenas.size(); ++index) {
+                            errcode = dump_one_packet(offsets[index], &cadenas[index], tracking, options, config, &cadenas);
+
+                            if (errcode < 0)
+                                return diag("error printing the packet", offset, errcode);
+                        }
+                    }
+                    cadenas.clear();
+                    offsets.clear();
+                    status = 0;
+                    FUPs = 0;
+                }
+            }
+        }
+        else if (packets == NULL) { // We are asking for the packet dump into a human readable file
+            errcode = dump_one_packet(offset, &packet, tracking, options, config, packets);
+
+            if (errcode < 0)
+                return diag("error printing the packet", offset, errcode);
+        }
     }
     return 0;
 }
@@ -988,8 +1077,9 @@ int pt_dump_config(LPBYTE lpBuff, DWORD dwBuffSize, HANDLE hOutFile, ptdump_opti
 	options->no_timing = 1;
 	options->show_offset = 0;
 	options->show_time_as_delta = 0;
-	options->no_pge_pgd = 0;
-	options->no_pip = 0;
+	options->no_pge_pgd = 1;
+	options->no_pip = 1;
+    options->show_exec_mode = 1;
 	options->offset_delta = qwDelta;
 	if (hOutFile)
 		options->hTargetFile = hOutFile;
@@ -1183,7 +1273,7 @@ BOOL pt_dump_packets(LPBYTE lpBuff, DWORD dwBuffSize, HANDLE hOutFile, QWORD qwD
     return (errcode == 0);
 }
 
-BOOL pt_dump_packets(LPCWSTR lpInputFile, DWORD dwMaxSize) {
+BOOL pt_dump_packets(LPCWSTR lpInputFile, VPACKETS* packets, DWORD dwMaxSize) {
     HANDLE hTarget = NULL;
     CHAR binaryFileAStr[MAX_PATH] = { 0 };
     CHAR myPath[MAX_PATH] = { 0 };
@@ -1218,7 +1308,7 @@ BOOL pt_dump_packets(LPCWSTR lpInputFile, DWORD dwMaxSize) {
     errcode = pt_dump_config(config.begin, dwMaxSize, hTarget, &options, &config);
 
     if (errcode == 0)
-        errcode = pt_dump(&config, &options);
+        errcode = pt_dump(&config, &options, packets);
 
     unload_file();
     return (errcode == 0);

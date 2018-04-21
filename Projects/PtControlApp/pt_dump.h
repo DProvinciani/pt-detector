@@ -118,6 +118,6 @@ int load_pt(struct pt_config *config, char *arg, const char *prog);
 int pt_dump(const struct pt_config *config, const struct ptdump_options *options, VPACKETS* packets = NULL);
 
 // binary dump 
-BOOL pt_dump_packets(LPCWSTR lpInputFile, DWORD dwMaxSize = 0);
+BOOL pt_dump_packets(LPCWSTR lpInputFile, VPACKETS* packets = NULL, DWORD dwMaxSize = 0);
 BOOL pt_dump_packets(LPBYTE lpBuff, DWORD dwBuffSize, HANDLE hOutFile, QWORD delta, VPACKETS* packets);
 int pt_dump_config(LPBYTE lpBuff, DWORD dwBuffSize, HANDLE hOutFile, ptdump_options* options, pt_config* config, QWORD delta = 0ull);

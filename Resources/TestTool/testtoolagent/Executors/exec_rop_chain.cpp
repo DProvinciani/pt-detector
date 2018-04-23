@@ -1,28 +1,39 @@
 #include "executors.h"
 
-#define CHAIN_BUFFER_SIZE 128
+#define CHAIN_BUFFER_SIZE 64
+
+#pragma warning(disable : 4996)
+#pragma runtime_checks( "", off )
 
 int TestToolAgentExecutors::ExecROPChain(unsigned char* ropChain)
 {
 	int ret = 0;
 
-	TestCommon::Xtrace(L"[TestToolAgent] Hello from ExecROPChain!");
+	TestCommon::Xtrace(L"[TestToolAgent] Entering to ExecROPChain!");
 
-	unsigned char ropChainOnStack[CHAIN_BUFFER_SIZE] = { 0 };
+    char ropChainOnStack[CHAIN_BUFFER_SIZE] = { 0 };
 
-	// Copying the rop chain into the stack
-	for (int i = 0; i < CHAIN_BUFFER_SIZE; i++)
-		ropChainOnStack[i] = *(ropChain + i);
+    FILE *ropChainFile;
+    int filesize;
 
-	int(*func)();
-	func = (int(*)()) ((ropChainOnStack[0] | '\0') | 
-		              ((ropChainOnStack[1] << 8) | '\0') | 
-		              ((ropChainOnStack[2] << 16) | '\0') | 
-		              ((ropChainOnStack[3] << 24) | '\0'));
-	(int)(*func)();
+    ropChainFile = fopen("c:\\rop_chain.txt", "r");
+    if (!ropChainFile) {
+        printf("Error opening %s\n", "c:\\rop_chain.txt");
+        return ret;
+    }
+
+    fseek(ropChainFile, 0, SEEK_END);
+    filesize = ftell(ropChainFile);
+    fseek(ropChainFile, 0, SEEK_SET);
+
+    // Copying the rop chain into the stack, so buffer overflow happens here
+    fread(ropChainOnStack, 1, filesize, ropChainFile);
+
+    fclose(ropChainFile);
 
 	if (ropChainOnStack[0]) { //use local variables so compiler won't remove them
-		return 0;
+        DeleteFile(L"c:\\rop_chain.txt");
+        TestCommon::Xtrace(L"[TestToolAgent] Leaving ExecROPChain!");
 	}
 
 	return ret;

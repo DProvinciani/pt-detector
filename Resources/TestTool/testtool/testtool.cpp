@@ -59,7 +59,7 @@ int wmain(int argc, wchar_t *argv[])
 	if (TestToolHelpers::IsValidFile(defaultFileToInject) &&
 		TestToolHelpers::GetFullPathToFile(defaultFileToInject, fullPathToFileToInject))
 	{
-		std::wcout << "[+] TestToolAgent DLL is going to be used: " << defaultFileToInject << std::endl;
+		std::wcout << "[+] Agent DLL to be injected: " << defaultFileToInject << std::endl;
 	}
 	else
 	{
@@ -79,8 +79,8 @@ int wmain(int argc, wchar_t *argv[])
 	testData.testcaseFile.assign(fullPathTestcaseFile);
 	testData.pidToInject.assign(pidToInject);
 
-	std::wcout << "[+] About to Execute ROP Chain against PID " << pidToInject
-		<< " using following file as a payload " << testcaseFile << std::endl;
+    std::wcout << "[+] About to Execute ROP Chain against PID: " << pidToInject << std::endl;
+    std::wcout << "[+] Using the following file as a payload: " << testcaseFile << std::endl;
 
 	if (manager.RunExecutor(TestCommon::TestExecutorsMode::TEST_ROP_CHAIN, testData))
 	{

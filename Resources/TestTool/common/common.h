@@ -28,7 +28,7 @@ namespace TestCommon
 	{
 		switch (value)
 		{
-		case TEST_ROP_CHAIN:			return L"Test ROP Chain execution";
+		case TEST_ROP_CHAIN:			return L"Test ROP Chain";
 		default:						return L"[Unknown TestExecutor]";
 		}
 	}

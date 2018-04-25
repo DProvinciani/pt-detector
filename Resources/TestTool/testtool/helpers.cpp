@@ -157,7 +157,7 @@ bool TestToolHelpers::InjectIntoProcessViaCreateRemoteThread(const std::wstring 
 						remoteBufferAddr = (PWSTR)VirtualAllocEx(hProcess, NULL, bufferSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 						if (remoteBufferAddr != NULL)
 						{
-							std::wcout << L"[+] " << std::dec << bufferSize << L" bytes of memory were allocated for the buffer into remote process at address "
+							std::wcout << L"[+] " << std::dec << bufferSize << L" bytes of memory were allocated for the Gadget DB into remote process at address "
 								<< std::hex << remoteBufferAddr << std::endl;
 
 							// Copy the buffer into the remote process address space
@@ -169,8 +169,6 @@ bool TestToolHelpers::InjectIntoProcessViaCreateRemoteThread(const std::wstring 
 								PTHREAD_START_ROUTINE pfnThreadRtn = (PTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "LoadLibraryW");
 								if (pfnThreadRtn != NULL)
 								{
-									std::wcout << L"[+] Address of LoadLibraryW was found at 0x" << std::hex << pfnThreadRtn << std::endl;
-
 									HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, pfnThreadRtn, pszLibFileRemote, 0, NULL);
 									if (hThread != NULL)
 									{

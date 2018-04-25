@@ -9,17 +9,12 @@ class ExecutorROPChain : public Executor
 {
 public:
 	bool Execute(TestCommon::TestData &data);
-	void initGadgetDB();
 
-	ExecutorROPChain() :
-		Executor(TestCommon::TestExecutorsToString(TestCommon::TestExecutorsMode::TEST_ROP_CHAIN),
-				 TestCommon::TestExecutorsMode::TEST_ROP_CHAIN) 
-	{
-		initGadgetDB();
-	}
+	ExecutorROPChain() : Executor(TestCommon::TestExecutorsToString(TestCommon::TestExecutorsMode::TEST_ROP_CHAIN),
+				         TestCommon::TestExecutorsMode::TEST_ROP_CHAIN) 
+	                     { }
 
 private:
-	std::map <std::string, std::string> gadgetDbStrings;
 
 };
 

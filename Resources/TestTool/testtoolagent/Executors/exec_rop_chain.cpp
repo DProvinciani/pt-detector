@@ -1,6 +1,6 @@
 #include "executors.h"
 
-#define CHAIN_BUFFER_SIZE 64
+#define CHAIN_BUFFER_SIZE 128
 
 #pragma warning(disable : 4996)
 #pragma runtime_checks( "", off )
@@ -16,7 +16,7 @@ int TestToolAgentExecutors::ExecROPChain(unsigned char* ropChain)
     FILE *ropChainFile;
     int filesize;
 
-    ropChainFile = fopen("c:\\rop_chain.txt", "r");
+    ropChainFile = fopen("c:\\rop_chain.txt", "rb");
     if (!ropChainFile) {
         printf("Error opening %s\n", "c:\\rop_chain.txt");
         return ret;

@@ -18,18 +18,20 @@
 
 namespace TestCommon
 {
-	enum TestExecutorsMode
+	enum ExecutorsMode
 	{
 		TEST_ROP_CHAIN = 0x01,
-		TEST_NA,
+        GET_REMOTE_FUNCTION_ADDRESS,
+		NA,
 	};
 
-	inline const wchar_t* TestExecutorsToString(TestExecutorsMode value)
+	inline const wchar_t* ExecutorModeToString(ExecutorsMode value)
 	{
 		switch (value)
 		{
-		case TEST_ROP_CHAIN:			return L"Test ROP Chain";
-		default:						return L"[Unknown TestExecutor]";
+		case TEST_ROP_CHAIN:			     return L"Test ROP Chain";
+        case GET_REMOTE_FUNCTION_ADDRESS:    return L"Get Remote Function Address";
+		default:						     return L"[Unknown TestExecutor]";
 		}
 	}
 
@@ -44,7 +46,7 @@ namespace TestCommon
 	};
 
 	static const bool DEFAULT_VERBOSITY_STATUS = false;
-	static const TestExecutorsMode DEFAULT_EXECUTOR_MODE = TestExecutorsMode::TEST_NA;
+	static const ExecutorsMode DEFAULT_EXECUTOR_MODE = ExecutorsMode::NA;
 	static const std::wstring DEFAULT_DLL_TO_INJECT = L"testtoolagent.dll";
 	static const std::wstring PRE_CHANNEL_TOKEN = L"TESTTOOLAGENTIPC_";
 

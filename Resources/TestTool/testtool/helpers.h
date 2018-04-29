@@ -17,16 +17,13 @@ namespace TestToolHelpers
 	bool GetFileToInjectSize(const std::wstring& file, DWORD &size);
 	bool ReadFileToInjectInBuffer(const std::wstring& file, const DWORD &fileSize, LPVOID lpBuffer, DWORD &bytesRead);
 	bool IsTestDataValid(TestCommon::TestData &data);
-	bool InjectIntoProcessViaCreateRemoteThread(const std::wstring &dllToInject,
-		const std::wstring &targetPIDToInject,
-		const LPVOID &payloadBuffer,
-		const DWORD &payloadSize,
-		LPVOID &remoteBufferAddr);
+    bool InjectIntoRemoteProcess(const std::wstring &dllToInject, const std::wstring &targetPIDToInject, HANDLE& hProcess);
+    bool WriteRemoteProcessMemory(const HANDLE hProcess, const LPVOID &buffer, const DWORD &bufferSize, LPVOID &remoteBufferAddr);
 
 	class IPCClient
 	{
 	public:
-		TestCommon::ARRAYBYTE SendRequest(TestCommon::TestExecutorsMode executorID, unsigned char *dataPayload, int dataSize);
+		TestCommon::ARRAYBYTE SendRequest(TestCommon::ExecutorsMode executorID, unsigned char *dataPayload, int dataSize);
 
 		IPCClient()
 		{

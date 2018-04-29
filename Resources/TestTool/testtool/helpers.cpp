@@ -113,123 +113,129 @@ bool TestToolHelpers::ReadFileToInjectInBuffer(const std::wstring& file, const D
 	return ret;
 }
 
-bool TestToolHelpers::InjectIntoProcessViaCreateRemoteThread(const std::wstring &dllToInject,
-															 const std::wstring &targetPIDToInject, 
-															 const LPVOID &buffer, 
-															 const DWORD &bufferSize,
-															 LPVOID &remoteBufferAddr)
+bool TestToolHelpers::InjectIntoRemoteProcess(const std::wstring &dllToInject,
+    const std::wstring &targetPIDToInject,
+    HANDLE& hProcess)
 {
-	bool ret = false;
+    bool ret = false;
 
-	if (!dllToInject.empty() && TestToolHelpers::IsNumber(targetPIDToInject))
-	{
-		DWORD targetPID = TestToolHelpers::ToInteger(targetPIDToInject);
-		std::wcout << L"[+] About to inject into target PID " << targetPID << std::endl;
-		size_t dllPathNameSize = dllToInject.length() * sizeof(wchar_t);
-		DWORD currentPID = GetCurrentProcessId();
+    if (!dllToInject.empty() && TestToolHelpers::IsNumber(targetPIDToInject))
+    {
+        DWORD targetPID = TestToolHelpers::ToInteger(targetPIDToInject);
+        std::wcout << L"[+] About to inject into target PID " << targetPID << std::endl;
+        size_t dllPathNameSize = dllToInject.length() * sizeof(wchar_t);
+        DWORD currentPID = GetCurrentProcessId();
 
-		// Sanity check to avoid injection to current process and system processes
-		if ((targetPID > 4) && (targetPID != currentPID))
-		{
-			// Getting a handle from target process
-			HANDLE hProcess = OpenProcess(
-				PROCESS_QUERY_INFORMATION |
-				PROCESS_CREATE_THREAD |
-				PROCESS_VM_OPERATION |
-				PROCESS_VM_WRITE,
-				FALSE, targetPID);
-			if (hProcess != NULL)
-			{
-				std::wcout << L"[+] Target PID " << targetPID << L" was succesfully opened" << std::endl;
+        // Sanity check to avoid injection to current process and system processes
+        if ((targetPID > 4) && (targetPID != currentPID))
+        {
+            // Getting a handle from target process
+            hProcess = OpenProcess(
+                PROCESS_QUERY_INFORMATION |
+                PROCESS_CREATE_THREAD |
+                PROCESS_VM_OPERATION |
+                PROCESS_VM_WRITE,
+                FALSE, targetPID);
+            if (hProcess != NULL)
+            {
+                std::wcout << L"[+] Target PID " << targetPID << L" was succesfully opened" << std::endl;
 
-				// Allocate space in the remote process for the pathname
-				LPVOID pszLibFileRemote = (PWSTR)VirtualAllocEx(hProcess, NULL, dllPathNameSize, MEM_COMMIT, PAGE_READWRITE);
-				if (pszLibFileRemote != NULL)
-				{
-					std::wcout << L"[+] " << std::dec << dllPathNameSize << L" bytes of memory were allocated for the DLL into remote process at address "
-						<< std::hex << pszLibFileRemote << std::endl;
+                // Allocate space in the remote process for the pathname
+                LPVOID pszLibFileRemote = (PWSTR)VirtualAllocEx(hProcess, NULL, dllPathNameSize, MEM_COMMIT, PAGE_READWRITE);
+                if (pszLibFileRemote != NULL)
+                {
+                    std::wcout << L"[+] " << std::dec << dllPathNameSize << L" bytes allocated for the DLL into remote process at address "
+                        << std::hex << pszLibFileRemote << std::endl;
 
-					// Copy the DLL's pathname to the remote process address space
-					DWORD n = WriteProcessMemory(hProcess, pszLibFileRemote, (PVOID)dllToInject.c_str(), dllPathNameSize, NULL);
-					if (n > 0)
-					{
-						//Now allocatting memory for buffer
-						remoteBufferAddr = (PWSTR)VirtualAllocEx(hProcess, NULL, bufferSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-						if (remoteBufferAddr != NULL)
-						{
-							std::wcout << L"[+] " << std::dec << bufferSize << L" bytes of memory were allocated for the Gadget DB into remote process at address "
-								<< std::hex << remoteBufferAddr << std::endl;
+                    // Copy the DLL's pathname to the remote process address space
+                    DWORD n = WriteProcessMemory(hProcess, pszLibFileRemote, (PVOID)dllToInject.c_str(), dllPathNameSize, NULL);
+                    if (n > 0)
+                    {
+                        // About to create remote thread to start test framework
+                        // Get the real address of LoadLibraryW in Kernel32.dll
+                        PTHREAD_START_ROUTINE pfnThreadRtn = (PTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "LoadLibraryW");
+                        if (pfnThreadRtn != NULL)
+                        {
+                            HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, pfnThreadRtn, pszLibFileRemote, 0, NULL);
+                            if (hThread != NULL)
+                            {
+                                std::wcout << L"[+] Success! DLL injected via InjectorCreateRemoteThread method" << std::endl;
+                                Sleep(500); //Sleeping for some time to allow DLLMain and its logic to be launched
 
-							// Copy the buffer into the remote process address space
-							DWORD n = WriteProcessMemory(hProcess, remoteBufferAddr, buffer, bufferSize, NULL);
-							if (n > 0)
-							{
-								// About to create remote thread to start test framework
-								// Get the real address of LoadLibraryW in Kernel32.dll
-								PTHREAD_START_ROUTINE pfnThreadRtn = (PTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "LoadLibraryW");
-								if (pfnThreadRtn != NULL)
-								{
-									HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, pfnThreadRtn, pszLibFileRemote, 0, NULL);
-									if (hThread != NULL)
-									{
-										std::wcout << L"[+] Success! DLL injected via InjectorCreateRemoteThread method" << std::endl;
-										Sleep(500); //Sleeping for some time to allow DLLMain and its logic to be launched
+                                ret = true;
+                            }
+                            else
+                            {
+                                std::wcout << L"[-] Error creating a remote thread in target process" << std::endl;
+                                wprintf(L"    CreateRemoteThread failed with 0x%x\n", GetLastError());
+                            }
+                        }
+                        else
+                        {
+                            std::wcout << L"[-] Error obtaining address of LoadLibraryW function inside kernel32.dll library" << std::endl;
+                        }
+                    }
+                    else
+                    {
+                        std::wcout << L"[-] Error copying the DLL's pathname to the remote process address 0x" << std::hex << pszLibFileRemote << std::endl;
+                    }
+                }
+                else
+                {
+                    std::wcout << L"[-] Error allocating memory in target process" << std::endl;
+                }
+            }
+            else
+            {
+                std::wcout << L"[-] Error opening target PID" << std::endl;
+            }
+        }
+        else
+        {
+            std::wcout << L"[-] An Invalid PID was provided" << std::endl;
+        }
+    }
+    else
+    {
+        std::wcout << L"[-] Bad arguments" << std::endl;
+    }
 
-										ret = true;
-									}
-									else
-									{
-										std::wcout << L"[-] There was a problem creating a remote thread in target process" << std::endl;
-
-										wprintf(L"    CreateRemoteThread failed with 0x%x\n", GetLastError());
-									}
-								}
-								else
-								{
-									std::wcout << L"[-] There was a problem obtaining address of LoadLibraryA function inside kernel32.dll library" << std::endl;
-								}
-							}
-							else
-							{
-								std::wcout << L"[-] Could not write data into remote process memory at address 0x" << std::hex << remoteBufferAddr << std::endl;
-							}
-						}
-						else
-						{
-							std::wcout << L"[-] There was a problem allocating memory for the buffer in remote process" << std::endl;
-						}
-					}
-					else
-					{
-						std::wcout << L"[-] Could not write data into remote process memory at address 0x" << std::hex << pszLibFileRemote << std::endl;
-					}
-				}
-				else
-				{
-					std::wcout << L"[-] There was a problem allocating memory in target process" << std::endl;
-				}
-
-				CloseHandle(hProcess);
-			}
-			else
-			{
-				std::wcout << L"[-] There was a problem opening target PID" << std::endl;
-			}
-		}
-		else
-		{
-			std::wcout << L"[-] An Invalid PID was provided" << std::endl;
-		}
-	}
-	else
-	{
-		std::wcout << L"[-] There was a problem with given arguments" << std::endl;
-	}
-
-	return ret;
+    return ret;
 }
 
-TestCommon::ARRAYBYTE TestToolHelpers::IPCClient::SendRequest(TestCommon::TestExecutorsMode executorID, unsigned char *dataPayload, int dataSize)
+bool TestToolHelpers::WriteRemoteProcessMemory(const HANDLE hProcess, const LPVOID &buffer, const DWORD &bufferSize, LPVOID &remoteBufferAddr)
+{
+    bool retValue = false;
+    //Allocatting memory for buffer
+    remoteBufferAddr = (PWSTR)VirtualAllocEx(hProcess, NULL, bufferSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    if (remoteBufferAddr != NULL)
+    {
+        std::wcout << L"[+] " << std::dec << bufferSize << L" bytes of memory were allocated for the Gadget DB into remote process at address "
+            << std::hex << remoteBufferAddr << std::endl;
+
+        // Copy the buffer into the remote process address space
+        DWORD n = WriteProcessMemory(hProcess, remoteBufferAddr, buffer, bufferSize, NULL);
+        if (n > 0)
+        {
+            std::wcout << L"[+] Success! The buffer was written into the remote process at address 0x" << std::hex << remoteBufferAddr << std::endl;
+            retValue = true;
+        }
+        else
+        {
+            std::wcout << L"[-] Could not write data into remote process memory at address 0x" << std::hex << remoteBufferAddr << std::endl;
+        }
+    }
+    else
+    {
+        DWORD error = GetLastError();
+        std::wcout << L"[-] There was a problem allocating memory for the buffer into the remote process" << std::endl;
+        wprintf(L"    VirtualAllocEx failed with 0x%x\n", error);
+    }
+
+    return retValue;
+}
+
+TestCommon::ARRAYBYTE TestToolHelpers::IPCClient::SendRequest(TestCommon::ExecutorsMode executorID, unsigned char *dataPayload, int dataSize)
 {
 	return m_client->request(executorID, dataPayload, dataSize);
 }

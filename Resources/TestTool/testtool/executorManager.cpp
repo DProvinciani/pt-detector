@@ -1,6 +1,6 @@
 #include "executorManager.h"
 
-bool ExecutorManager::RunExecutor(const TestCommon::TestExecutorsMode mode,
+bool ExecutorManager::RunExecutor(const TestCommon::ExecutorsMode mode,
 								  TestCommon::TestData &data)
 {
 	bool ret = false;

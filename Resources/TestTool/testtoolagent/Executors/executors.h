@@ -6,6 +6,7 @@
 namespace TestToolAgentExecutors
 {
 	int ExecROPChain(unsigned char* data);
+    int GetRemoteFunctionAddress(unsigned char* data);
 }
 
 #endif

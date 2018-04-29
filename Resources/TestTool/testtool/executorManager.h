@@ -13,7 +13,7 @@ public:
 		m_executors.push_back(executor);
 	}
 
-	bool RunExecutor(const TestCommon::TestExecutorsMode mode,
+	bool RunExecutor(const TestCommon::ExecutorsMode mode,
 					 TestCommon::TestData &data);
 
 	ExecutorManager::ExecutorManager() {}

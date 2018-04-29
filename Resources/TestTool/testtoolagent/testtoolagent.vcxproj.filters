@@ -39,6 +39,9 @@
     <ClCompile Include="Executors\exec_rop_chain.cpp">
       <Filter>Executors</Filter>
     </ClCompile>
+    <ClCompile Include="Executors\get_remote_function_address.cpp">
+      <Filter>Executors</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="dispatcher.h">

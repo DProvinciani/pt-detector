@@ -177,6 +177,7 @@
       </PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="Executors\exec_rop_chain.cpp" />
+    <ClCompile Include="Executors\get_remote_function_address.cpp" />
     <ClCompile Include="helpers.cpp" />
   </ItemGroup>
   <ItemGroup>

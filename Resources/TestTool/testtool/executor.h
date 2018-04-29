@@ -14,20 +14,20 @@ public:
 		return m_description;
 	}
 
-	const TestCommon::TestExecutorsMode GetMode()
+	const TestCommon::ExecutorsMode GetMode()
 	{
 		return m_testExecutorMode;
 	}
 
-	Executor(std::wstring description, TestCommon::TestExecutorsMode mode) :
+	Executor(std::wstring description, TestCommon::ExecutorsMode mode) :
 		m_description(description), m_testExecutorMode(mode) {}
 
 	Executor() :
-		m_description(L""), m_testExecutorMode(TestCommon::TestExecutorsMode::TEST_NA) {}
+		m_description(L""), m_testExecutorMode(TestCommon::ExecutorsMode::NA) {}
 
 private:
 	std::wstring m_description;
-	TestCommon::TestExecutorsMode m_testExecutorMode;
+	TestCommon::ExecutorsMode m_testExecutorMode;
 };
 
 #endif

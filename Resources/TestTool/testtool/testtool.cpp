@@ -82,14 +82,14 @@ int wmain(int argc, wchar_t *argv[])
     std::wcout << "[+] About to Execute ROP Chain against PID: " << pidToInject << std::endl;
     std::wcout << "[+] Using the following file as a payload: " << testcaseFile << std::endl;
 
-	if (manager.RunExecutor(TestCommon::TestExecutorsMode::TEST_ROP_CHAIN, testData))
+	if (manager.RunExecutor(TestCommon::ExecutorsMode::TEST_ROP_CHAIN, testData))
 	{
 		std::wcout << "[+] Testcase was succesfully executed!" << std::endl;
 	}
 	else
 	{
 		std::wcout << "[-] There was a problem executing the requested testcase: " <<
-			TestCommon::TestExecutorsToString(TestCommon::TestExecutorsMode::TEST_ROP_CHAIN) <<
+			TestCommon::ExecutorModeToString(TestCommon::ExecutorsMode::TEST_ROP_CHAIN) <<
 			std::endl;
 	}
 

@@ -16,7 +16,8 @@ DWORD WINAPI TestToolAgentCore::RunTestToolAgent(LPVOID lpParameter)
 	std::wstring serverName(TestCommon::PRE_CHANNEL_TOKEN + std::to_wstring(currentPID));
 
 	dipc::server testToolAgentServer(serverName);
-	testToolAgentServer.route(TestCommon::TestExecutorsMode::TEST_ROP_CHAIN, TestToolAgentExecutors::ExecROPChain);
+	testToolAgentServer.route(TestCommon::ExecutorsMode::TEST_ROP_CHAIN, TestToolAgentExecutors::ExecROPChain);
+    testToolAgentServer.route(TestCommon::ExecutorsMode::GET_REMOTE_FUNCTION_ADDRESS, TestToolAgentExecutors::GetRemoteFunctionAddress);
 
 	testToolAgentServer.run();
 

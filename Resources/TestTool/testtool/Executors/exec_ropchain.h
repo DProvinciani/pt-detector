@@ -10,8 +10,8 @@ class ExecutorROPChain : public Executor
 public:
 	bool Execute(TestCommon::TestData &data);
 
-	ExecutorROPChain() : Executor(TestCommon::TestExecutorsToString(TestCommon::TestExecutorsMode::TEST_ROP_CHAIN),
-				         TestCommon::TestExecutorsMode::TEST_ROP_CHAIN) 
+	ExecutorROPChain() : Executor(TestCommon::ExecutorModeToString(TestCommon::ExecutorsMode::TEST_ROP_CHAIN),
+				         TestCommon::ExecutorsMode::TEST_ROP_CHAIN) 
 	                     { }
 
 private:

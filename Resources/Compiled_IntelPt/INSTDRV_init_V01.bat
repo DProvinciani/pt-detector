@@ -1,1 +1,1 @@
-C:\Development\Tesis\Resources\Compiled_IntelPt\INSTDRV.EXE C:\Development\Tesis\Resources\Compiled_IntelPt\V01\WindowsPtDriver.sys
+INSTDRV.EXE V01\WindowsPtDriver.sys

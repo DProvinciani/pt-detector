@@ -157,7 +157,6 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 		wprintf(L"FAIL\r\n");
 		FreePerCpuData(TRUE);
 		CloseHandle(hPtDevice);
-        system("pause");
 		return -1;
 	}
 
@@ -193,7 +192,32 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 	}
 #pragma endregion
 
-#pragma region 5. Set IP filtering (if any) and TRACE options
+#pragma region 5. Getting information about the remote windows APIs
+    std::wcout << L"Getting information about windows APIs on target process... ";
+    
+    std::wstring defaultFileToInject(PtExploitDetectorCommon::DEFAULT_DLL_TO_INJECT);
+    std::wstring fullPathToFileToInject;
+    PtExploitDetectorCommon::GetFullPathToFile(defaultFileToInject, fullPathToFileToInject);
+    bReturn = InjectPtExploitDetectorAgentIntoRemoteProcess(fullPathToFileToInject, processInfo.hProcess);
+    if (!bReturn) {
+        wprintf(L"FAIL\r\n");
+        FreePerCpuData(TRUE);
+        CloseHandle(hPtDevice);
+        return -1;
+    }
+
+    std::wstring channelID(PtExploitDetectorCommon::PRE_CHANNEL_TOKEN + std::to_wstring(processInfo.dwProcessId));
+    bReturn = GetRemoteWindowsApis(channelID, g_appData.remoteAPIs);
+    if (bReturn) cl_wprintf(GREEN, L"DONE\r\n");
+    else {
+        wprintf(L"FAIL\r\n");
+        FreePerCpuData(TRUE);
+        CloseHandle(hPtDevice);
+        return -1;
+    }
+#pragma endregion
+
+#pragma region 6. Set IP filtering (if any) and TRACE options
 	HMODULE hRemoteMod = NULL;						// The remote module base address
 	MODULEINFO remoteModInfo = { 0 };				// The remote module information
 
@@ -233,11 +257,11 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 	ptStartStruct.dwTraceSize = g_appData.dwTraceBuffSize;
 #pragma endregion
 
-#pragma region 6. Allocate each PT CPU buffer and Start the tracing and wait the process to exit
+#pragma region 7. Allocate each PT CPU buffer and Start the tracing and wait the process to exit
 	LPVOID * lpBuffArray = new LPVOID[dwCpusToUse];
 	RtlZeroMemory(lpBuffArray, sizeof(LPVOID)* dwCpusToUse);
 	
-	// Start the device Tracing
+    // Start the device Tracing
 	wprintf(L"Starting the Tracing and resuming the process... ");
 	ptStartStruct.dwProcessId = processInfo.dwProcessId;
 	ptStartStruct.kCpuAffinity = cpuAffinity;
@@ -254,10 +278,10 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 			g_appData.pCpuBufferDescArray[i].dwBuffSize = ptStartStruct.dwTraceSize;
 		}
 
-		// Resume the target process
+        // Resume the target process
 		Sleep(100);
 		ResumeThread(processInfo.hThread);
-		wprintf(L"Waiting for the traced process to exit...\r\n\r\n");
+        wprintf(L"Waiting for the traced process to exit...\r\n\r\n");
 		WaitForSingleObject(processInfo.hProcess, INFINITE);
 	}
 	else {
@@ -277,12 +301,8 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 	}
 #pragma endregion
 
-#pragma region 7. Get the results of our tracing (like the number of written packets)
-    //////////////////////////////////////
-    PTHREAD_START_ROUTINE pfnThreadRtn = (PTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "WinExec");
-    std::wcout << L"Address of WinExec --> 0x" << std::hex << pfnThreadRtn << std::endl << std::endl;
-    //////////////////////////////////////
-	PT_TRACE_DETAILS ptDetails = { 0 };
+#pragma region 8. Get the results of our tracing (like the number of written packets)
+    PT_TRACE_DETAILS ptDetails = { 0 };
 	
 	cl_wprintf(DARKYELLOW, L"    *** PT Trace results ***\r\n");
 	
@@ -298,7 +318,7 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 	wprintf(L"        All the dumps have been saved in \"%s\".\r\n\r\n", lpOutputDir);
 #pragma endregion
 
-#pragma region 8. Free the resources and close each files
+#pragma region 9. Free the resources and close each files
 	// Stop the Tracing (and clear the buffer if not manually allocated)
 	bReturn = DeviceIoControl(hPtDevice, IOCTL_PTDRV_CLEAR_TRACE, (LPVOID)&cpuAffinity, sizeof(cpuAffinity), NULL, 0, &dwBytesIo, NULL);
 
@@ -519,9 +539,88 @@ BOOL SpawnSuspendedProcess(const std::wstring wsExecutableFullPath, PROCESS_INFO
             bReturn = FALSE;
     }
 
-    // delete lpCommandLine;
-
     return bReturn;
+}
+
+BOOL InjectPtExploitDetectorAgentIntoRemoteProcess(const std::wstring dllToInject, const HANDLE hProcess)
+{
+    BOOL retValue = FALSE;
+    
+    if (!dllToInject.empty() || (hProcess != NULL))
+    {
+        size_t dllPathNameSize = dllToInject.length() * sizeof(wchar_t);
+
+        // Allocate space in the remote process for the pathname
+        LPVOID pszLibFileRemote = (PWSTR)VirtualAllocEx(hProcess, NULL, dllPathNameSize, MEM_COMMIT, PAGE_READWRITE);
+        if (pszLibFileRemote != NULL)
+        {
+            // Copy the DLL's pathname to the remote process address space
+            DWORD n = WriteProcessMemory(hProcess, pszLibFileRemote, (PVOID)dllToInject.c_str(), dllPathNameSize, NULL);
+            if (n > 0)
+            {
+                std::wstring fullPathToLoadLibraryGetter;
+                PtExploitDetectorCommon::GetFullPathToFile(L"loadLibrary_x86_address.exe", fullPathToLoadLibraryGetter);
+                
+                // About to create remote thread to start test framework
+                // Get the real address of LoadLibraryW in Kernel32.dll
+                PTHREAD_START_ROUTINE pfnThreadRtn = (PTHREAD_START_ROUTINE)_wsystem(fullPathToLoadLibraryGetter.c_str());
+                if (pfnThreadRtn != NULL)
+                {
+                    HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, pfnThreadRtn, pszLibFileRemote, 0, NULL);
+                    if (hThread != NULL)
+                    {
+                        Sleep(500); //Sleeping for some time to allow DLLMain and its logic to be launched
+
+                        retValue = TRUE;
+                    }
+                    else
+                    {
+                        std::wcout << L"    Error creating a remote thread in target process" << std::endl;
+                        wprintf(L"    CreateRemoteThread failed with 0x%x\n", GetLastError());
+                    }
+                }
+                else
+                {
+                    std::wcout << L"    Error obtaining address of LoadLibraryW function inside kernel32.dll library" << std::endl;
+                }
+            }
+            else
+            {
+                std::wcout << L"    Error copying the DLL's pathname to the remote process address 0x" << std::hex << pszLibFileRemote << std::endl;
+            }
+        }
+        else
+        {
+            std::wcout << L"    Error allocating memory in target process" << std::endl;
+        }
+    }
+    else
+    {
+        std::wcout << L"    Bad arguments" << std::endl;
+    }
+
+    return retValue;
+}
+
+BOOL GetRemoteWindowsApis(const std::wstring channelID, RAPIs& apiAddresses)
+{
+    BOOL retValue = FALSE;
+    
+    IPCClient* client = new IPCClient(channelID);
+
+    std::string functionName = "WinExec";
+
+    ARRAYBYTE ret = client->SendRequest(PtExploitDetectorCommon::ExecutorsMode::GET_REMOTE_FUNCTION_ADDRESS,
+        (unsigned char *)functionName.c_str(), functionName.length());
+
+    //std::cout << std::endl << "    Function: " << functionName << " --- 0x" << std::hex << *(DWORD*)(&ret[0]) << std::endl;
+
+    apiAddresses.insert(std::pair<UINT32, std::wstring>(*(UINT32*)(&ret[0]), L"WinExec"));
+
+    if (apiAddresses.size() > 0)
+        retValue = TRUE;
+    
+    return retValue;
 }
 
 // The PMI interrupt Thread 
@@ -591,8 +690,10 @@ DWORD WINAPI PmiThreadProc(LPVOID lpParameter) {
 			bReturn = pt_dump_packets(pCurrentCpuBufferDesc->lpPtBuff, dwEndOffset, pCurrentCpuBufferDesc->hTextFile, qwDelta, &chain);
 			pCurrentCpuBufferDesc->qwDelta += (QWORD)dwEndOffset;
 
-            if (chain.size() > 0)
+            if (chain.size() > 0) {
                 Xtrace(L"[PtControlApp] Executing PMI interrupt. Chains detected: %d", chain.size());
+                EvaluateAPIsOnChain(chain);
+            }
 		}
 	}
 
@@ -626,8 +727,10 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
             bReturn = pt_dump_packets((LPBYTE)lpBuffer, (DWORD)qwBufferSize, pCurrentCpuBufferDesc->hTextFile, qwDelta, &chain);
             qwDelta += (QWORD)qwBufferSize;
             
-            if (chain.size() > 0)
+            if (chain.size() > 0) {
                 Xtrace(L"[PtControlApp] Executing PMI callback. Chains detected: %d", chain.size());
+                EvaluateAPIsOnChain(chain);
+            }
         }
 	}
 
@@ -640,4 +743,15 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
 		ZwResumeProcess(g_appData.hTargetProcess);
 
 	if (g_appData.hMainThread) ResumeThread(g_appData.hMainThread);
+}
+
+void EvaluateAPIsOnChain(VPACKETS chain)
+{
+    for (unsigned index = 0; index < chain.size(); ++index)
+    {
+        if (g_appData.remoteAPIs.find(chain[index].second) != g_appData.remoteAPIs.end())
+        {
+            Xtrace(L"[PtControlApp] Remote API detected on chain.");
+        }
+    }
 }

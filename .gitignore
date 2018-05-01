@@ -21,6 +21,8 @@
 Output/
 Projects/PtControlApp/Debug_**
 Projects/PtControlApp/Release_**
+Projects/PtExploitDetectorAgent/Debug_**
+Projects/PtExploitDetectorAgent/Release_**
 Projects/WindowsPtDriver/Debug_**
 Projects/WindowsPtDriver/Release_**
 Resources/TestExploitTool/Debug_**

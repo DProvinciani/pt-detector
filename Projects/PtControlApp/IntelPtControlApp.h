@@ -13,10 +13,14 @@
 #include "IntelPt.h"
 #include "pt_dump.h"
 #include "..\WindowsPtDriver\DriverIo.h"
+#include "../common/common.h"
+#include "../common/ipcpp.h"
 
 #define DEFAULT_TRACE_BUFF_SIZE 128 * 1024	// Default TRACE buffer size
 #define ROUND_TO_PAGES(Size)  (((ULONG_PTR)(Size) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
 #define PAGE_SIZE 0x1000
+
+typedef std::map<UINT32, std::wstring> RAPIs;
 
 // The PT buffer data structure
 struct PT_CPU_BUFFER_DESC {
@@ -43,6 +47,7 @@ struct GLOBAL_DATA {
 	PT_CPU_BUFFER_DESC * pCpuBufferDescArray;	// The PT CPU buffer descriptor array
 	DWORD dwActiveCpus;				        	// The number of active CPUs
 	KAFFINITY kActiveCpusAffinity;				// The active CPUs affinity mask
+    RAPIs remoteAPIs;                           // The vector to hold the remote windows APIs addresses
 
 	// Struct constructor
 	GLOBAL_DATA() { dwTraceBuffSize = DEFAULT_TRACE_BUFF_SIZE; bTraceByIp = TRUE; }
@@ -71,6 +76,12 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize);
 // Spawn a suspended process and oblige the loader to load the remote image in memory
 BOOL SpawnSuspendedProcess(const std::wstring wsExecutableFullPath, PROCESS_INFORMATION * pProcessInfo, std::wstring wsCommandLine = L"");
 
+// Inject a DLL into the traced process to get windows APIs addresses
+BOOL InjectPtExploitDetectorAgentIntoRemoteProcess(const std::wstring dllToInject, const HANDLE hProcess);
+
+// Get all the interesting remote windows API addresses
+BOOL GetRemoteWindowsApis(const std::wstring channelID, RAPIs& apiAddresses);
+
 // Initialize and open the per-CPU files and data structures
 bool InitPerCpuData(DWORD dwCpusToUse, KAFFINITY cpuAffinity, LPTSTR lpOutputDir);
 
@@ -79,6 +90,9 @@ bool FreePerCpuData(BOOL bDeleteFiles);
 
 // Write the human readable dump file header
 bool WriteCpuTextDumpsHeader(const wchar_t* lpExecutableFullPath, ULONG_PTR qwBase, DWORD dwSize);
+
+// Print remote APIs targeted by the exploit
+void EvaluateAPIsOnChain(VPACKETS chain);
 
 // AaLl86 Test driver stuff
 typedef struct _KERNEL_MODULE {
@@ -91,3 +105,28 @@ typedef struct _KERNEL_MODULE {
 #define IOCTL_PTBUG_SEARCHKERNELMODULE CTL_CODE(FILE_DEVICE_UNKNOWN, 0xB01, METHOD_BUFFERED, FILE_READ_DATA)
 // Kernel Tracing Test IOCTL
 #define IOCTL_PTDR_DO_KERNELDRV_TEST CTL_CODE(FILE_DEVICE_UNKNOWN, 0xA0C, METHOD_BUFFERED, FILE_EXECUTE)
+
+typedef std::vector<unsigned char> ARRAYBYTE;
+
+class IPCClient
+{
+public:
+    ARRAYBYTE SendRequest(PtExploitDetectorCommon::ExecutorsMode executorID, unsigned char *dataPayload, int dataSize)
+    {
+        return m_client->request(executorID, dataPayload, dataSize);
+    }
+
+    IPCClient()
+    {
+        m_client = new dipc::client();
+    }
+
+    IPCClient(const std::wstring &channelID) : m_currentChannelID(channelID)
+    {
+        m_client = new dipc::client(channelID);
+    }
+
+private:
+    std::wstring m_currentChannelID;
+    dipc::client* m_client;
+};

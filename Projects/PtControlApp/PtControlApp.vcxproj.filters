@@ -22,6 +22,9 @@
     <Filter Include="libs">
       <UniqueIdentifier>{25fb05fc-58ba-4ffb-98f7-4d80df0b04dd}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\IPC">
+      <UniqueIdentifier>{503d8d98-72fc-4ab1-b550-a5fed2b24b92}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -60,6 +63,9 @@
     <ClInclude Include="UndocNt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\common\ipcpp.h">
+      <Filter>Source Files\IPC</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -85,6 +91,9 @@
     </ClCompile>
     <ClCompile Include="EntryPoint.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\ipcpp.cpp">
+      <Filter>Source Files\IPC</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

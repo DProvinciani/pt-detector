@@ -101,7 +101,6 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 	A process affinity mask is a bit vector in which each bit represents a logical
 	processor on which the threads of the process are allowed to run.
 	*/
-
     if (systemInfo.dwNumberOfProcessors > 1) {
         // -1i64 creates a 64 bit variable with all the bits set to 1
         // The cast to DWORD_PTR ensures that the right shift will fill the vacant bits with 0 (because DWORD_PTR is unsigned)
@@ -279,41 +278,13 @@ int ConfigureTrace(const std::wstring wsExecutableFullPath, const std::wstring w
 #pragma endregion
 
 #pragma region 7. Get the results of our tracing (like the number of written packets)
+    //////////////////////////////////////
+    PTHREAD_START_ROUTINE pfnThreadRtn = (PTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "WinExec");
+    std::wcout << L"Address of WinExec --> 0x" << std::hex << pfnThreadRtn << std::endl << std::endl;
+    //////////////////////////////////////
 	PT_TRACE_DETAILS ptDetails = { 0 };
 	
 	cl_wprintf(DARKYELLOW, L"    *** PT Trace results ***\r\n");
-
-    /*wprintf(L"        Number of packets in memory: %d\r\n", g_appData.packets.size());
-    TCHAR packetsFileName[MAX_PATH] = { 0 };
-    RtlZeroMemory(packetsFileName, MAX_PATH * sizeof(TCHAR));
-    swprintf_s(packetsFileName, MAX_PATH, L"%s\\packets.log", lpOutputDir);
-
-    HANDLE hPacketsFile = CreateFile(packetsFileName, FILE_GENERIC_WRITE | DELETE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
-
-    if (hPacketsFile != INVALID_HANDLE_VALUE) {
-        for (unsigned i = 0; i < g_appData.packets.size(); i++) {
-            CHAR fullLine[0x200] = { 0 };
-
-            if (g_appData.packets[i].type == pt_packet_type::ppt_fup)
-                sprintf_s(fullLine, COUNTOF(fullLine), "FUP ");
-            if (g_appData.packets[i].type == pt_packet_type::ppt_mode)
-                sprintf_s(fullLine, COUNTOF(fullLine), "MODE ");
-            if (g_appData.packets[i].type == pt_packet_type::ppt_tip)
-                sprintf_s(fullLine, COUNTOF(fullLine), "TIP ");
-            if (g_appData.packets[i].type == pt_packet_type::ppt_tip_pgd)
-                sprintf_s(fullLine, COUNTOF(fullLine), "TIP_PGD ");
-            if (g_appData.packets[i].type == pt_packet_type::ppt_tip_pge)
-                sprintf_s(fullLine, COUNTOF(fullLine), "TiP_PGE ");
-            if (g_appData.packets[i].type == pt_packet_type::ppt_tnt_64)
-                sprintf_s(fullLine, COUNTOF(fullLine), "TNT64 ");
-            if (g_appData.packets[i].type == pt_packet_type::ppt_tnt_8)
-                sprintf_s(fullLine, COUNTOF(fullLine), "TNT8 ");
-
-            WriteFile(hPacketsFile, fullLine, (DWORD)strlen(fullLine), &dwBytesIo, NULL);
-        }
-
-        CloseHandle(hPacketsFile);
-    }*/
 	
 	for (unsigned i = 0; i < dwCpusToUse; i++) {
 		RtlZeroMemory(&ptDetails, sizeof(ptDetails));
@@ -615,12 +586,13 @@ DWORD WINAPI PmiThreadProc(LPVOID lpParameter) {
 		bReturn = WriteFile(pCurrentCpuBufferDesc->hBinFile, pCurrentCpuBufferDesc->lpPtBuff, dwEndOffset, &dwBytesIo, NULL);
 		if (pCurrentCpuBufferDesc->hTextFile) {
 			// Dump the text trace file immediately
-            VPACKETS packets;
+            VPACKETS chain;
             QWORD & qwDelta = pCurrentCpuBufferDesc->qwDelta;
-			bReturn = pt_dump_packets(pCurrentCpuBufferDesc->lpPtBuff, dwEndOffset, pCurrentCpuBufferDesc->hTextFile, qwDelta, &packets);
+			bReturn = pt_dump_packets(pCurrentCpuBufferDesc->lpPtBuff, dwEndOffset, pCurrentCpuBufferDesc->hTextFile, qwDelta, &chain);
 			pCurrentCpuBufferDesc->qwDelta += (QWORD)dwEndOffset;
 
-            //Xtrace(L"[PtControlApp] Executing PMI interrupt. Chains detected: %d", packets.size());
+            if (chain.size() > 0)
+                Xtrace(L"[PtControlApp] Executing PMI interrupt. Chains detected: %d", chain.size());
 		}
 	}
 
@@ -650,11 +622,12 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
 		
 		if (pCurrentCpuBufferDesc->hTextFile) {
             // Dump the text trace file immediately
-            VPACKETS packets;
-            bReturn = pt_dump_packets((LPBYTE)lpBuffer, (DWORD)qwBufferSize, pCurrentCpuBufferDesc->hTextFile, qwDelta, &packets);
+            VPACKETS chain;
+            bReturn = pt_dump_packets((LPBYTE)lpBuffer, (DWORD)qwBufferSize, pCurrentCpuBufferDesc->hTextFile, qwDelta, &chain);
             qwDelta += (QWORD)qwBufferSize;
             
-            //Xtrace(L"[PtControlApp] Executing PMI callback. Chains detected: %d", packets.size());
+            if (chain.size() > 0)
+                Xtrace(L"[PtControlApp] Executing PMI callback. Chains detected: %d", chain.size());
         }
 	}
 

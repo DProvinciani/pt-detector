@@ -23,7 +23,7 @@ int wmain(int argc, LPTSTR argv[]) {
 
     cl_wprintf(DARKYELLOW, L"\r\n    *** Code-Reuse Exploits Detector ***\r\n\r\n");
 
-    system("pause");
+    //system("pause");
 
     // verifying necessary parameters
     if (switches.HasOption(L"-d")) {

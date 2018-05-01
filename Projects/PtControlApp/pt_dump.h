@@ -14,7 +14,7 @@
 #include "decoder\pt_time.h"
 #include "decoder\intel-pt.h"
 
-typedef std::vector<pt_packet> VPACKETS;
+typedef std::vector<std::pair <pt_packet_type, UINT32>> VPACKETS;
 
 struct ptdump_options {
 	/* Show the current offset in the trace stream. */
@@ -115,9 +115,9 @@ struct ptdump_global {
 int load_pt(struct pt_config *config, char *arg, const char *prog);
 
 // Dump all the PT packets and return it in a vector
-int pt_dump(const struct pt_config *config, const struct ptdump_options *options, VPACKETS* packets = NULL);
+int pt_dump(const struct pt_config *config, const struct ptdump_options *options, VPACKETS* chain = NULL);
 
 // binary dump 
-BOOL pt_dump_packets(LPCWSTR lpInputFile, VPACKETS* packets = NULL, DWORD dwMaxSize = 0);
-BOOL pt_dump_packets(LPBYTE lpBuff, DWORD dwBuffSize, HANDLE hOutFile, QWORD delta, VPACKETS* packets);
+BOOL pt_dump_packets(LPCWSTR lpInputFile, VPACKETS* chain = NULL, DWORD dwMaxSize = 0);
+BOOL pt_dump_packets(LPBYTE lpBuff, DWORD dwBuffSize, HANDLE hOutFile, QWORD delta, VPACKETS* chain);
 int pt_dump_config(LPBYTE lpBuff, DWORD dwBuffSize, HANDLE hOutFile, ptdump_options* options, pt_config* config, QWORD delta = 0ull);

@@ -9,3 +9,4 @@
 * [Libipt - Intel(R) Processor Trace decoder library](https://github.com/01org/processor-trace)
 * [Keystone assembler framework](https://github.com/keystone-engine/keystone)
 * [RapidJSON](https://github.com/Tencent/rapidjson)
+* [DIPC](https://github.com/breezechen/dipc)

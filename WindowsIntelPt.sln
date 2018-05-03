@@ -4,7 +4,7 @@ VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WindowsPtDriver", "Projects\WindowsPtDriver\WindowsIntelPtDriver.vcxproj", "{44253DD8-98B2-4229-8305-5DD1E272CDE3}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PtControlApp", "Projects\PtControlApp\PtControlApp.vcxproj", "{AEEB84F9-A268-4642-8CCC-CE05D80ACD74}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PtExploitDetector", "Projects\PtExploitDetector\PtExploitDetector.vcxproj", "{AEEB84F9-A268-4642-8CCC-CE05D80ACD74}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PtExploitDetectorAgent", "Projects\PtExploitDetectorAgent\PtExploitDetectorAgent.vcxproj", "{C039526D-043A-40A1-8698-B3FAB5BD41B2}"
 EndProject

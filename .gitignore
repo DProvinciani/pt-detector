@@ -19,8 +19,8 @@
 [Oo]bj/
 [Ll]og/
 Output/
-Projects/PtControlApp/Debug_**
-Projects/PtControlApp/Release_**
+Projects/PtExploitDetector/Debug_**
+Projects/PtExploitDetector/Release_**
 Projects/PtExploitDetectorAgent/Debug_**
 Projects/PtExploitDetectorAgent/Release_**
 Projects/WindowsPtDriver/Debug_**

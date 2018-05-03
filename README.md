@@ -10,3 +10,4 @@
 * [Keystone assembler framework](https://github.com/keystone-engine/keystone)
 * [RapidJSON](https://github.com/Tencent/rapidjson)
 * [DIPC](https://github.com/breezechen/dipc)
+* [Plog](https://github.com/SergiusTheBest/plog)
